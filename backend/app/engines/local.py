@@ -23,8 +23,12 @@ VRAM budget on the 8 GB target (RTX 5070):
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import glob
 import json
 import logging
+import os
+import site
 import time
 from collections.abc import AsyncIterator
 
@@ -207,6 +211,40 @@ class OllamaLLM(LLMEngine):
             self._client = None
 
 
+def _enable_onnx_cuda() -> None:
+    """Make Kokoro use the GPU. Two obstacles, both of which fail silently.
+
+    1. kokoro-onnx 0.4.9 gates GPU on `find_spec("onnxruntime-gpu")`. Module
+       names cannot contain hyphens — that is the *distribution* name, the
+       module is `onnxruntime` — so it is always None and providers stay
+       CPU-only no matter what is installed. Its `ONNX_PROVIDER` env var is
+       the only supported way past this.
+    2. The pip `nvidia-*` wheels put libcudnn/libcublas under
+       site-packages/nvidia/*/lib, which the dynamic linker does not search,
+       so the CUDA provider fails to load with "libcudnn.so.9: cannot open
+       shared object file" and onnxruntime quietly falls back to CPU.
+       Preloading them RTLD_GLOBAL resolves it in-process, which beats making
+       every caller set LD_LIBRARY_PATH before starting Python.
+
+    cuBLAS must load before cuDNN, which links against it.
+    """
+    os.environ.setdefault("ONNX_PROVIDER", "CUDAExecutionProvider")
+
+    # Load ONLY these three, in this order. Globbing every lib*.so under
+    # nvidia/*/lib would also pull cuDNN's optional engine libraries, one of
+    # which (libcudnn_engines_precompiled) is ~700 MB on its own — a real
+    # problem inside WSL2's default 7.6 GB RAM cap. cuDNN resolves those
+    # itself, on demand, from its own directory.
+    for soname in ("libcublas.so.12", "libcublasLt.so.12", "libcudnn.so.9"):
+        for base in site.getsitepackages():
+            for lib in glob.glob(os.path.join(base, "nvidia", "*", "lib", soname)):
+                try:
+                    ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
+                except OSError:  # noqa: PERF203 — best effort; verified after load
+                    pass
+                break
+
+
 class KokoroTTS(TTSEngine):
     name = "kokoro"
     sample_rate = 24_000
@@ -229,12 +267,30 @@ class KokoroTTS(TTSEngine):
             )
 
         def _load():
+            if settings.kokoro_device == "cuda":
+                _enable_onnx_cuda()
             return Kokoro(str(model_path), str(voices_path))
 
         log.info("Loading Kokoro TTS (device=%s)…", settings.kokoro_device)
         self._kokoro = await asyncio.to_thread(_load)
+
+        # Verify rather than assume. onnxruntime falls back to CPU silently
+        # when a provider fails to initialise, and `get_available_providers()`
+        # keeps listing CUDA regardless — it reports the build, not what loaded.
+        # Only the session knows the truth. Measured cost of getting this wrong
+        # on an RTX 5070: TTS 203 ms on GPU vs 901 ms on the CPU fallback.
+        active = list(getattr(self._kokoro, "sess", None).get_providers()) if getattr(
+            self._kokoro, "sess", None) is not None else []
+        if settings.kokoro_device == "cuda" and "CUDAExecutionProvider" not in active:
+            log.warning(
+                "KOKORO_DEVICE=cuda but Kokoro is running on %s. Install "
+                "onnxruntime-gpu and nvidia-cudnn-cu12 (see requirements-local.txt); "
+                "TTS will be ~4x slower until then.",
+                active or "CPU",
+            )
         await self._warm()
-        log.info("Kokoro ready — voice %s", settings.kokoro_voice)
+        log.info("Kokoro ready — voice %s on %s",
+                 settings.kokoro_voice, active[0] if active else "unknown")
 
     async def _warm(self) -> None:
         """Burn the first inference at startup, not on the user's first turn.

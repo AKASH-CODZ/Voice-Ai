@@ -18,7 +18,17 @@ faster-whisper==1.1.1
 requests==2.32.3
 kokoro-onnx==0.4.9
 
-# GPU ONNX runtime. Uncomment ONLY on an NVIDIA machine where you want Kokoro
-# on the GPU — it installs its own CUDA/cuDNN copy alongside Torch's, which is
-# a real cost inside an 8 GB VRAM budget. See docs/DECISIONS.md → D-03.
-# onnxruntime-gpu==1.20.1
+# GPU ONNX runtime. Uncomment BOTH lines (and comment out `onnxruntime` in
+# requirements.txt — the two ship the same module and cannot coexist) on an
+# NVIDIA machine. Measured on an RTX 5070: TTS 901 ms -> 203 ms, mean end-to-end
+# 1163 ms -> 450 ms, which is what takes this project under its 800 ms target.
+# See docs/decisions.md -> D-03.
+#
+# Costs, both measured, both real: ~2.2 GB of nvidia-* wheels on disk, and the
+# CUDA context inside an 8 GB VRAM budget already holding Ollama and Whisper.
+#
+# There is no onnxruntime-gpu 1.20.1 — 1.20.0 and 1.20.2 exist, 1.20.1 does not.
+# The old pin here was unusable.
+# onnxruntime-gpu==1.20.2
+# nvidia-cudnn-cu12==9.*   # else the CUDA provider fails to load and, without
+#                          # any error, silently falls back to CPU.
