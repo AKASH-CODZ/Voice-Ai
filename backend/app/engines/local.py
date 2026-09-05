@@ -66,7 +66,27 @@ class FasterWhisperSTT(STTEngine):
             settings.resolved_whisper_compute_type,
         )
         self._model = await asyncio.to_thread(_load)
+        await self._warm()
         log.info("Faster-Whisper ready")
+
+    async def _warm(self) -> None:
+        """Burn the first inference at startup, not on the user's first turn.
+
+        Measured on an RTX 5070 (cuda / int8_float16): the first transcribe
+        costs ~7165 ms while every call after it runs at ~100 ms — a 71x gap.
+        That is CTranslate2 selecting CUDA kernels and bringing up its
+        cuBLAS/cuDNN handles. On CPU the same gap is small enough to miss,
+        which is why this was invisible until the code ran on the target GPU.
+        Without this, the user's opening sentence takes ~8.7 s end-to-end.
+        """
+        try:
+            # Faint noise rather than digital silence: the decoder short-circuits
+            # on pure zeros, leaving its kernels cold.
+            rng = np.random.default_rng(0)
+            noise = (rng.standard_normal(WHISPER_RATE) * 1e-3).astype(np.float32)
+            await self.transcribe(noise, WHISPER_RATE)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("STT warm-up failed (%s) — first turn will be slower", exc)
 
     async def transcribe(self, audio: np.ndarray, sample_rate: int) -> Transcript:
         if self._model is None:
