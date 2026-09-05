@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.pnpm-store/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Data & models
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/exports/
+models/
+*.onnx
+*.gguf
+*.pt
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build artifacts
+*.egg-info/
+models/_test_speech.wav
+models/_bench_*.wav

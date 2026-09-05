@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-900 text-haze-200 antialiased;
+    /* Two offset radial washes keep the near-black ground from reading as a
+       flat empty page — the same trick the Hume EVI interface uses. */
+    background-image:
+      radial-gradient(900px 520px at 18% -10%, rgba(76, 201, 240, 0.07), transparent 60%),
+      radial-gradient(760px 460px at 88% 8%, rgba(139, 92, 246, 0.06), transparent 62%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-casual/25 text-white;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-white/10;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+}
+
+/* Respect the OS setting — this page animates a lot by design, and a user who
+   has asked for less motion should get a static orb, not a pulsing one. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

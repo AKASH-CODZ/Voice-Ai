@@ -1,0 +1,36 @@
+# Versions below are the exact set this project was built and tested against
+# (Python 3.11). See docs/DECISIONS.md → D-09 for why 3.11 is the floor.
+
+# ── Web / transport ──────────────────────────────────────────
+# FastAPI must stay >=0.141 to remain compatible with starlette 1.x, which is
+# what the `mcp` package requires. Pinning fastapi 0.115 alongside the MCP
+# server produces a hard import error — see docs/DECISIONS.md → D-11.
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.52.4
+websockets==14.1
+python-multipart==0.0.20
+pydantic==2.13.4
+pydantic-settings==2.7.0
+
+# ── Storage ──────────────────────────────────────────────────
+aiosqlite==0.20.0
+
+# ── Audio / VAD ──────────────────────────────────────────────
+numpy==2.2.1
+onnxruntime==1.20.1
+soxr==0.5.0.post1
+
+# ── Cloud engine ─────────────────────────────────────────────
+groq==0.15.0
+httpx==0.28.1
+edge-tts==7.0.0
+
+# ── Diagnostics ──────────────────────────────────────────────
+psutil==6.1.1
+nvidia-ml-py==12.560.30
+
+# ── Dev ──────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.25.1
+ruff==0.8.6

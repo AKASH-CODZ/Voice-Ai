@@ -1,0 +1,24 @@
+# Local-engine extras: install on top of requirements.txt when you want to run
+# STT and TTS on this machine instead of routing to Groq.
+#
+# CUDA note (RTX 5070 / Blackwell, sm_120): PyTorch cu121 wheels ship NO kernels
+# for sm_120 and fail at the first CUDA op with
+#   "no kernel image is available for execution on the device".
+# Install torch from the cu126 index (or newer) FIRST, then this file:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+#
+# Apple Silicon and CPU-only machines need nothing extra — faster-whisper and
+# kokoro-onnx below both run on CPU, and Ollama drives the GPU itself.
+
+-r requirements.txt
+
+faster-whisper==1.1.1
+# faster-whisper 1.1.1 imports `requests` at module load but does not declare
+# it as a dependency — without this line the import fails with ModuleNotFoundError.
+requests==2.32.3
+kokoro-onnx==0.4.9
+
+# GPU ONNX runtime. Uncomment ONLY on an NVIDIA machine where you want Kokoro
+# on the GPU — it installs its own CUDA/cuDNN copy alongside Torch's, which is
+# a real cost inside an 8 GB VRAM budget. See docs/DECISIONS.md → D-03.
+# onnxruntime-gpu==1.20.1

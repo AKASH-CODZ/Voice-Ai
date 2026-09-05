@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────
+# Cloud / demo image — CPU only.
+#
+# This is what a reviewer or a Hugging Face Space runs. It deliberately does
+# NOT install torch, faster-whisper or onnxruntime-gpu: STT and the LLM go to
+# Groq, and TTS runs on CPU. That keeps the image around 400 MB instead of
+# several gigabytes, which is the difference between a demo that starts in
+# seconds and one that times out.
+# ─────────────────────────────────────────────────────────────
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# ffmpeg is only needed for CLOUD_TTS_PROVIDER=edge (MP3 → PCM). It is ~60 MB;
+# drop this line if you are staying on the default kokoro-onnx TTS.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Requirements first: this layer is cached across code changes, so an edit to
+# a Python file does not reinstall the dependency tree.
+COPY backend/requirements.txt ./backend/requirements.txt
+RUN pip install --upgrade pip && pip install -r backend/requirements.txt
+
+# Kokoro runs on CPU in this image, so we still need its weights and Silero.
+COPY tools/download_models.py ./tools/download_models.py
+RUN python tools/download_models.py
+
+COPY backend ./backend
+COPY tools ./tools
+
+RUN useradd --create-home --uid 1000 echosync \
+    && mkdir -p /app/data /app/models \
+    && chown -R echosync:echosync /app
+USER echosync
+
+ENV PYTHONPATH=/app/backend \
+    ENGINE_MODE=cloud \
+    DATABASE_PATH=/app/data/echosync.db \
+    EXPORT_DIR=/app/data/exports \
+    SILERO_VAD_PATH=/app/models/silero_vad.onnx \
+    KOKORO_MODEL_PATH=/app/models/kokoro-v0_19.onnx \
+    KOKORO_VOICES_PATH=/app/models/voices.bin
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:8000/api/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

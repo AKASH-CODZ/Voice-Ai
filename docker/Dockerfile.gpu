@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────
+# Local GPU image — CUDA 12.6 runtime.
+#
+# 12.6, not 12.1: the RTX 5070 is Blackwell (sm_120) and cu121 wheels contain
+# no kernels for it. A cu121 image builds and starts perfectly, then dies at
+# the first CUDA op with "no kernel image is available for execution on the
+# device" — see docs/DECISIONS.md → D-02.
+#
+# Ollama is NOT inside this image. It runs on the host (or its own container)
+# so its model cache survives rebuilds; the compose file wires the connection.
+# ─────────────────────────────────────────────────────────────
+FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu22.04 AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3-pip ffmpeg curl \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY backend/requirements.txt backend/requirements-local.txt ./backend/
+# Torch from the cu126 index must land before the local extras, so that
+# faster-whisper builds against the right CUDA runtime.
+RUN pip install --upgrade pip \
+    && pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126 \
+    && pip install -r backend/requirements-local.txt
+
+COPY tools/download_models.py ./tools/download_models.py
+RUN python tools/download_models.py
+
+COPY backend ./backend
+COPY tools ./tools
+
+RUN useradd --create-home --uid 1000 echosync \
+    && mkdir -p /app/data /app/models \
+    && chown -R echosync:echosync /app
+USER echosync
+
+ENV PYTHONPATH=/app/backend \
+    ENGINE_MODE=auto \
+    WHISPER_DEVICE=cuda \
+    DATABASE_PATH=/app/data/echosync.db \
+    EXPORT_DIR=/app/data/exports \
+    SILERO_VAD_PATH=/app/models/silero_vad.onnx \
+    KOKORO_MODEL_PATH=/app/models/kokoro-v0_19.onnx \
+    KOKORO_VOICES_PATH=/app/models/voices.bin
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS http://localhost:8000/api/health || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
