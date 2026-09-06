@@ -11,7 +11,9 @@ import type {
 
 function resolveWsUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  const backend = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+  const raw = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+  const backend =
+    raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
   try {
     const u = new URL(backend);
     const scheme = u.protocol === "https:" ? "wss:" : "ws:";

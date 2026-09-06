@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EchoSync AI — spoken English practice agent</title>
+  <meta name="description" content="Real-time spoken-English practice. Local GPU or Groq cloud. Casual, tutor, and silent mock-interview modes." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #07080c;
+      --ink-2: #0e1118;
+      --haze: #c8cdd8;
+      --mute: #8b93a7;
+      --line: rgba(255,255,255,.08);
+      --casual: 76, 201, 240;
+      --teach: 139, 92, 246;
+      --obs: 245, 158, 11;
+      --accent: rgb(var(--casual));
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      color: var(--haze);
+      background: var(--ink);
+      background-image:
+        radial-gradient(900px 520px at 18% -10%, rgba(76,201,240,.09), transparent 60%),
+        radial-gradient(760px 460px at 88% 8%, rgba(139,92,246,.08), transparent 62%);
+      background-attachment: fixed;
+    }
+    a { color: rgb(var(--casual)); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 80px; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .mark { font-weight: 700; letter-spacing: .04em; font-size: 13px; text-transform: uppercase; color: #fff; }
+    .mark span { color: rgb(var(--casual)); }
+    .badge {
+      font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+      border: 1px solid var(--line); background: rgba(255,255,255,.03);
+      padding: 6px 10px; border-radius: 999px; color: var(--mute);
+    }
+    h1 {
+      font-size: clamp(32px, 6vw, 56px); line-height: 1.05; color: #fff;
+      font-weight: 700; margin: 28px 0 12px; max-width: 16ch;
+    }
+    .lede { font-size: 18px; color: var(--mute); max-width: 46ch; margin: 0 0 28px; }
+    .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 18px; border-radius: 10px; font-weight: 600; font-size: 14px;
+      border: 1px solid transparent; cursor: pointer; text-decoration: none !important;
+    }
+    .btn-primary { background: rgb(var(--casual)); color: #041018; }
+    .btn-ghost { background: transparent; border-color: var(--line); color: #fff; }
+    .stage {
+      margin: 48px 0 40px; display: grid; grid-template-columns: 1fr 280px; gap: 32px; align-items: center;
+    }
+    @media (max-width: 800px) { .stage { grid-template-columns: 1fr; } }
+    .orb-wrap { display: grid; place-items: center; min-height: 280px; }
+    .orb {
+      width: 220px; height: 220px; border-radius: 50%;
+      background:
+        radial-gradient(circle at 38% 32%, rgba(255,255,255,.35), transparent 28%),
+        radial-gradient(circle at 50% 50%, rgba(var(--hue, 76, 201, 240), .95), rgba(var(--hue, 76, 201, 240), .15) 62%, transparent 70%);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.08),
+        0 0 80px rgba(var(--hue, 76, 201, 240), .35);
+      animation: breathe 3.6s ease-in-out infinite;
+      position: relative;
+    }
+    .orb::after {
+      content: ""; position: absolute; inset: -18px; border-radius: 50%;
+      border: 1px solid rgba(var(--hue, 76, 201, 240), .25);
+      animation: ring 3.6s ease-in-out infinite;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.045); }
+    }
+    @keyframes ring {
+      0%, 100% { transform: scale(1); opacity: .7; }
+      50% { transform: scale(1.06); opacity: .25; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .orb, .orb::after { animation: none; }
+    }
+    .modes { display: flex; flex-direction: column; gap: 8px; }
+    .mode {
+      text-align: left; width: 100%;
+      background: rgba(255,255,255,.03); border: 1px solid var(--line);
+      color: var(--haze); padding: 12px 14px; border-radius: 12px; cursor: pointer;
+      font-family: inherit;
+    }
+    .mode.active { border-color: rgba(var(--hue), .55); background: rgba(var(--hue), .08); }
+    .mode b { display: block; color: #fff; font-size: 14px; }
+    .mode span { font-size: 12px; color: var(--mute); }
+    .note {
+      border: 1px solid rgba(245,158,11,.35); background: rgba(245,158,11,.08);
+      padding: 14px 16px; border-radius: 12px; font-size: 14px; color: #f3e6c6;
+      margin-bottom: 36px;
+    }
+    h2 { color: #fff; font-size: 20px; margin: 36px 0 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .card {
+      border: 1px solid var(--line); background: rgba(255,255,255,.03);
+      border-radius: 14px; padding: 16px;
+    }
+    .card h3 { margin: 0 0 8px; color: #fff; font-size: 15px; }
+    .card p { margin: 0; font-size: 13px; color: var(--mute); line-height: 1.5; }
+    pre {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 12.5px; line-height: 1.55;
+      background: var(--ink-2); border: 1px solid var(--line);
+      border-radius: 12px; padding: 16px; overflow-x: auto; color: #d7deea;
+    }
+    footer { margin-top: 48px; font-size: 12px; color: var(--mute); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="mark">Echo<span>Sync</span> AI</div>
+      <div class="badge">Static Space · free plan</div>
+    </header>
+
+    <h1>Talk. It talks back. On your machine.</h1>
+    <p class="lede">
+      Real-time spoken-English practice: casual chat, active tutor, or silent mock interview.
+      Local Faster-Whisper + Ollama + Kokoro, or Groq when the box can’t host the stack.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/AKASH-CODZ/Voice-Ai">Clone on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/AKASH-CODZ/Voice-Ai#readme">Setup &amp; docs</a>
+    </div>
+
+    <div class="stage">
+      <div class="orb-wrap">
+        <div class="orb" id="orb" style="--hue: 76, 201, 240"></div>
+      </div>
+      <div class="modes" id="modes">
+        <button class="mode active" data-mode="casual" data-hue="76, 201, 240">
+          <b>Casual</b><span>Open conversation. Follow the speaker.</span>
+        </button>
+        <button class="mode" data-mode="teaching" data-hue="139, 92, 246">
+          <b>Tutor</b><span>Correct and drill. Keep the floor tight.</span>
+        </button>
+        <button class="mode" data-mode="observation" data-hue="245, 158, 11">
+          <b>Mock interview</b><span>Silent observer until the round ends.</span>
+        </button>
+      </div>
+    </div>
+
+    <p class="note">
+      This Hugging Face Space is a <strong>static project page</strong>. Free accounts cannot run Docker or Gradio Spaces, so the live microphone / WebSocket agent is not hosted here. Run it locally with the commands below. A Groq-backed Docker Space needs Hugging Face PRO.
+    </p>
+
+    <h2>Run local</h2>
+    <pre>git clone https://github.com/AKASH-CODZ/Voice-Ai.git
+cd Voice-Ai
+cp .env.example .env
+make setup && make models
+make backend    # :8000
+make frontend   # :3000</pre>
+    <p style="font-size:13px;color:var(--mute)">Python <strong>3.11 or 3.12</strong> only. Optional <code>GROQ_API_KEY</code> in <code>.env</code> for cloud fallback. Never commit that file.</p>
+
+    <h2>What it is</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Native WebSocket</h3>
+        <p>PCM16 in at 16 kHz, out at 24 kHz. Silero VAD for turn-taking. No LiveKit in the default path.</p>
+      </div>
+      <div class="card">
+        <h3>One clone, one machine</h3>
+        <p>The probe picks local vs cloud from the computer you start. M4 and RTX 5070 are independent hosts, not a pair.</p>
+      </div>
+      <div class="card">
+        <h3>Three modes</h3>
+        <p>Casual, tutor, silent mock-interview — each prompt is runtime source in the repo, not a docs leftover.</p>
+      </div>
+    </div>
+
+    <footer>
+      Space: <a href="https://huggingface.co/spaces/Akash-8/EchoSync-AI">Akash-8/EchoSync-AI</a>
+      · Source: <a href="https://github.com/AKASH-CODZ/Voice-Ai">AKASH-CODZ/Voice-Ai</a>
+    </footer>
+  </div>
+  <script>
+    const orb = document.getElementById("orb");
+    document.getElementById("modes").addEventListener("click", (e) => {
+      const btn = e.target.closest(".mode");
+      if (!btn) return;
+      document.querySelectorAll(".mode").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      orb.style.setProperty("--hue", btn.dataset.hue);
+    });
+  </script>
+</body>
+</html>

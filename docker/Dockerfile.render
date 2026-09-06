@@ -1,0 +1,41 @@
+# Render free web service (512 MB). Cloud engine: Groq STT/LLM + Edge TTS.
+# Skip Kokoro (~330 MB weights) so the instance does not OOM.
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY backend/requirements.txt ./backend/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install -r backend/requirements.txt
+
+COPY tools/download_models.py ./tools/download_models.py
+RUN python tools/download_models.py --vad-only
+
+COPY backend ./backend
+COPY tools ./tools
+
+RUN useradd --create-home --uid 1000 echosync \
+    && mkdir -p /app/data /app/models \
+    && chown -R echosync:echosync /app
+USER echosync
+
+ENV PYTHONPATH=/app/backend \
+    ENGINE_MODE=cloud \
+    CLOUD_TTS_PROVIDER=edge \
+    DATABASE_PATH=/app/data/echosync.db \
+    EXPORT_DIR=/app/data/exports \
+    SILERO_VAD_PATH=/app/models/silero_vad.onnx
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS http://localhost:${PORT:-8000}/api/health || exit 1
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

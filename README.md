@@ -48,7 +48,7 @@ GitHub cannot host the WebSocket voice path. A visitor gets **two doors**:
 
 | Door | What happens |
 |---|---|
-| **Try live (Groq)** | A hosted Hugging Face Space. Your browser mic talks to Groq using the operator's key, stored as a **Space secret** (never in git). Your laptop does not need Ollama, a GPU, or this repo. |
+| **Try live (Groq)** | **Render** free web services (mic → Groq + Edge TTS). Sleeps after 15 min idle. Hugging Face free = static page only. |
 | **Run local (Ollama)** | Clone → `make setup && make models`. The probe recommends a model **for that machine** and auto-starts Ollama if it is installed but stopped. |
 
 The live demo will **not** download an Ollama installer onto your laptop.
@@ -56,11 +56,24 @@ That would be a desktop installer, not a Space.
 
 ### Try live (Groq)
 
-**Status:** the Space is not linked yet. It goes live only after
-`GROQ_API_KEY` is set as a Hugging Face Space secret. Config is already
-in this repo (YAML frontmatter above, `Dockerfile`, `app.py`).
+**Hosted demo (free):** Render — the only one of Railway / Render / Fly.io
+that still offers a real free **web service** (Railway is a $5 trial then
+paid; Fly.io dropped the free tier for new accounts).
 
-Until the link is here, the cloud path is clone + your own key in `.env`.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AKASH-CODZ/Voice-Ai)
+
+1. Click the button (or **New → Blueprint** and pick this repo).
+2. Paste `GROQ_API_KEY` when prompted. Do not commit it.
+3. Wait for `echosync-api` and `echosync-web`. First request after idle
+   takes ~1 minute (free instances sleep after 15 minutes).
+4. Open the **echosync-web** URL and allow the microphone.
+
+`render.yaml` at the repo root: Docker API (`docker/Dockerfile.render`,
+Edge TTS so it fits 512 MB RAM) + Node frontend. SQLite is ephemeral.
+
+**Hugging Face (free):** project page only —  
+https://huggingface.co/spaces/Akash-8/EchoSync-AI  
+Docker Spaces need HF PRO.
 
 ### Run local (Ollama)
 

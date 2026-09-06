@@ -1,0 +1,44 @@
+# Render Blueprint — free Hobby web services.
+# Railway: $5 trial then paid. Fly.io: no free tier for new accounts.
+# Render: free web services (sleep after 15 min idle; ~1 min cold start).
+#
+# Apply: https://dashboard.render.com/blueprints
+# Or:    https://render.com/deploy?repo=https://github.com/AKASH-CODZ/Voice-Ai
+#
+# You must paste GROQ_API_KEY when Render prompts (never commit it).
+
+previewsEnabled: false
+
+services:
+  - type: web
+    name: echosync-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./docker/Dockerfile.render
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENGINE_MODE
+        value: cloud
+      - key: CLOUD_TTS_PROVIDER
+        value: edge
+      - key: ECHOSYNC_ENV
+        value: production
+      - key: GROQ_API_KEY
+        sync: false
+
+  - type: web
+    name: echosync-web
+    runtime: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npx next start -H 0.0.0.0 -p $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: NEXT_PUBLIC_BACKEND_URL
+        fromService:
+          name: echosync-api
+          type: web
+          property: host
