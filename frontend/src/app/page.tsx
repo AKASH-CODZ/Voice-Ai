@@ -8,6 +8,7 @@ import { ModeSwitcher } from "@/components/ModeSwitcher";
 import { Transcript } from "@/components/Transcript";
 import { VoiceOrb } from "@/components/VoiceOrb";
 import { useVoiceSession } from "@/hooks/useVoiceSession";
+import { apiUrl } from "@/lib/backend";
 import type { EnginePreference, HealthResponse, Mode } from "@/lib/types";
 
 export default function Home() {
@@ -25,7 +26,7 @@ export default function Home() {
   // thing a reviewer looks at.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/health")
+    fetch(apiUrl("/api/health"))
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -157,7 +158,7 @@ export default function Home() {
             </h2>
             {state.sessionId && (
               <a
-                href={`/api/sessions/${state.sessionId}/export.md`}
+                href={apiUrl(`/api/sessions/${state.sessionId}/export.md`)}
                 download
                 className="rounded-md border border-white/[0.08] px-2 py-1 text-[11px] text-haze-300 transition-colors hover:bg-white/[0.06]"
               >

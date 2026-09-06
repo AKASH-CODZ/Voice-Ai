@@ -56,17 +56,19 @@ That would be a desktop installer, not a Space.
 
 ### Try live (Groq)
 
-**Hosted demo (free):** Render — the only one of Railway / Render / Fly.io
-that still offers a real free **web service** (Railway is a $5 trial then
-paid; Fly.io dropped the free tier for new accounts).
+**Live:** https://echosync-web.onrender.com  
+Allow the microphone. First hit after idle can take ~1 minute (Render
+free services sleep after 15 minutes). Cloud path is Groq STT/LLM +
+Edge TTS. API: https://echosync-api.onrender.com/api/health
+
+This is a Render free web service (Railway is a $5 trial then paid;
+Fly.io dropped the free tier for new accounts).
+
+To redeploy your own copy:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AKASH-CODZ/Voice-Ai)
 
-1. Click the button (or **New → Blueprint** and pick this repo).
-2. Paste `GROQ_API_KEY` when prompted. Do not commit it.
-3. Wait for `echosync-api` and `echosync-web`. First request after idle
-   takes ~1 minute (free instances sleep after 15 minutes).
-4. Open the **echosync-web** URL and allow the microphone.
+Paste `GROQ_API_KEY` when prompted. Do not commit it.
 
 `render.yaml` at the repo root: Docker API (`docker/Dockerfile.render`,
 Edge TTS so it fits 512 MB RAM) + Node frontend. SQLite is ephemeral.

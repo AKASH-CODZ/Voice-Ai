@@ -38,7 +38,4 @@ services:
       - key: NODE_VERSION
         value: "22.12.0"
       - key: NEXT_PUBLIC_BACKEND_URL
-        fromService:
-          name: echosync-api
-          type: web
-          property: host
+        value: https://echosync-api.onrender.com
