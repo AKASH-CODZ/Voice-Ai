@@ -1,0 +1,53 @@
+flowchart TB
+  subgraph API
+    MAIN[main.py lifespan DB and hardware log]
+    WSV[ws_voice.py start command send lock]
+    RSYS[routes_system health hardware whoami]
+    RSES[routes_sessions turns stats export]
+  end
+
+  subgraph CORE
+    CFG[config.py pydantic-settings]
+    HW[hardware.py NVML / Apple Silicon]
+    AUD[audio.py PCM16 clip plus soxr]
+    SCH[schemas.py events and commands]
+    SQL[database.py WAL one writer]
+    EXP[export.py User AI markdown]
+  end
+
+  subgraph PIPELINE
+    VAD[vad.py Silero plus segmenter]
+    ORCH[orchestrator.py turn loop]
+    CHUNK[chunker.py first-comma flush]
+    ST[state.py modes plus watchdog]
+    TEL[telemetry.py async queue]
+  end
+
+  subgraph ENGINES
+    BASE[base.py Protocol STT LLM TTS]
+    RTR[router.py decide_engine]
+    LOC[local.py Whisper Ollama Kokoro]
+    CLD[cloud.py Groq plus Kokoro-onnx]
+  end
+
+  PROMPTS[prompts md runtime source]
+
+  WSV --> ORCH
+  WSV --> RTR
+  RTR --> HW
+  RTR --> LOC
+  RTR --> CLD
+  LOC --> BASE
+  CLD --> BASE
+  ORCH --> VAD
+  ORCH --> CHUNK
+  ORCH --> ST
+  ST --> PROMPTS
+  ORCH --> TEL
+  TEL --> SQL
+  RSES --> SQL
+  RSES --> EXP
+  RSYS --> HW
+  CFG --> MAIN
+  AUD --> VAD
+  WSV --> SCH

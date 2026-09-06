@@ -23,7 +23,7 @@ def _tick(ok: bool) -> str:
 
 
 def main() -> int:
-    report = probe()
+    report = probe(ensure=True)
 
     print("\n\033[1mEchoSync AI — hardware diagnostic\033[0m")
     print("─" * 62)
@@ -55,7 +55,14 @@ def main() -> int:
 
     print("\n\033[1m  Preconditions\033[0m")
     print(f"    {_tick(report.cuda_available or report.apple_silicon)} GPU acceleration available")
-    print(f"    {_tick(report.ollama_reachable)} Ollama reachable at {settings.ollama_base_url}")
+    ollama_ok = report.ollama_status == "up"
+    print(f"    {_tick(ollama_ok)} Ollama {report.ollama_status} at {settings.ollama_base_url}")
+    if report.ollama_model:
+        print(f"                  picked {report.ollama_model}")
+    elif report.ollama_pick_reason:
+        print(f"                  {report.ollama_pick_reason}")
+    if report.ollama_models:
+        print(f"                  pulled {', '.join(report.ollama_models)}")
     print(f"    {_tick(report.cloud_credentials)} GROQ_API_KEY set (cloud fallback)")
 
     vad = settings.silero_vad_path
@@ -65,8 +72,9 @@ def main() -> int:
 
     print("\n\033[1m  Resolved engine config\033[0m")
     print(f"    Whisper   {settings.whisper_model} on "
-          f"{settings.resolved_whisper_device} / {settings.resolved_whisper_compute_type}")
-    print(f"    LLM       {settings.ollama_model}")
+          f"{report.whisper_device or settings.resolved_whisper_device} / "
+          f"{settings.resolved_whisper_compute_type}")
+    print(f"    LLM       {report.ollama_model or '(none picked)'}")
     print(f"    TTS       kokoro ({settings.kokoro_voice})")
 
     colour = "\033[32m" if report.recommended_engine == "local" else "\033[33m"

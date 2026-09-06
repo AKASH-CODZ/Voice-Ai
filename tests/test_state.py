@@ -71,6 +71,32 @@ def test_observation_never_emits_stall_notice():
     assert not injected_stall_notices(state.build_messages("..."))
 
 
+def test_greet_injects_a_user_kick_when_history_is_empty():
+    """System-only chat returns empty from llama3.2-instruct; greet must not."""
+    state = ConversationState(session_id="s", mode=Mode.CASUAL, topic="backend interview")
+    messages = state.build_messages(None)
+    assert messages[-1]["role"] == "user"
+    assert "greet" in messages[-1]["content"].lower()
+    assert state.history == []
+
+
+def test_greet_kick_is_not_used_when_the_user_already_spoke():
+    state = ConversationState(session_id="s", mode=Mode.CASUAL)
+    messages = state.build_messages("hello there")
+    assert messages[-1] == {"role": "user", "content": "hello there"}
+    assert sum(1 for m in messages if m["role"] == "user") == 1
+
+
+def test_stall_intervention_still_ends_on_a_user_turn():
+    state = ConversationState(session_id="s", mode=Mode.TEACHING)
+    state.append_user("I was talking about indexes.")
+    state.append_assistant("Go on.")
+    state.note_stall(4500)
+    messages = state.build_messages(None)
+    assert messages[-1]["role"] == "user"
+    assert injected_stall_notices(messages)
+
+
 def test_topic_is_injected_into_system_prompt():
     state = ConversationState(session_id="s", mode=Mode.CASUAL, topic="backend interview")
     assert "backend interview" in state.system_prompt()

@@ -63,6 +63,9 @@ SendAudio = Callable[[bytes], Awaitable[None]]
 # frames are being captured while the speaker is actively playing audio.
 BARGE_IN_THRESHOLD = 0.85
 BARGE_IN_FRAMES = 5           # ~160 ms of confident speech at 32 ms/frame
+# Ignore mic frames for this long after the first TTS byte. Speaker echo of
+# the opening words otherwise looks like a barge-in and cuts the reply.
+BARGE_IN_GRACE_S = 0.6
 
 # Whisper emits these for silence, breath and clicks. Speaking them back is
 # worse than saying nothing.
@@ -98,6 +101,7 @@ class VoiceOrchestrator:
         self._speaking = False           # AI currently rendering audio
         self._turn_task: asyncio.Task[None] | None = None
         self._barge_in_run = 0
+        self._barge_in_grace_until = 0.0
         self._closed = False
 
         # Guards against two utterances racing into overlapping turns when the
@@ -142,6 +146,8 @@ class VoiceOrchestrator:
 
     async def _check_barge_in(self, frame: np.ndarray) -> None:
         if not settings.barge_in_enabled:
+            return
+        if time.monotonic() < self._barge_in_grace_until:
             return
         prob = self.segmenter.vad(frame)
         if prob >= BARGE_IN_THRESHOLD:
@@ -226,6 +232,7 @@ class VoiceOrchestrator:
 
                 self._speaking = True
                 self._barge_in_run = 0
+                self._barge_in_grace_until = 0.0
                 self.segmenter.disarm_stall_watchdog()
                 await self._send_event(SpeakingEvent(active=True))
 
@@ -247,6 +254,7 @@ class VoiceOrchestrator:
                                 tts_ms = (time.perf_counter() - tts_started) * 1000.0
                                 e2e_ms = (time.perf_counter() - utterance_end) * 1000.0
                                 first_audio_sent = True
+                                self._barge_in_grace_until = time.monotonic() + BARGE_IN_GRACE_S
                             await self._send_audio(float32_to_pcm16(pcm_chunk))
 
                 llm_ms = (time.perf_counter() - llm_started) * 1000.0
@@ -261,6 +269,7 @@ class VoiceOrchestrator:
                             tts_ms = (time.perf_counter() - tts_started) * 1000.0
                             e2e_ms = (time.perf_counter() - utterance_end) * 1000.0
                             first_audio_sent = True
+                            self._barge_in_grace_until = time.monotonic() + BARGE_IN_GRACE_S
                         await self._send_audio(float32_to_pcm16(pcm_chunk))
 
                 # ── commit the turn ──
@@ -328,6 +337,7 @@ class VoiceOrchestrator:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._turn_task
         self._speaking = False
+        self._barge_in_grace_until = 0.0
         self.segmenter.reset()
         self.segmenter.arm_stall_watchdog()
         with contextlib.suppress(Exception):

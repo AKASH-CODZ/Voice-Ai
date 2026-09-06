@@ -1,11 +1,12 @@
 # Local-engine extras: install on top of requirements.txt when you want to run
 # STT and TTS on this machine instead of routing to Groq.
 #
-# CUDA note (RTX 5070 / Blackwell, sm_120): PyTorch cu121 wheels ship NO kernels
-# for sm_120 and fail at the first CUDA op with
-#   "no kernel image is available for execution on the device".
-# Install torch from the cu126 index (or newer) FIRST, then this file:
-#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+# CUDA note (RTX 5070 / Blackwell, sm_120): cu121 AND cu126 stable 2.6.0 wheels
+# ship NO sm_120 kernels. 2.6.0+cu126 installs, reports cuda=True, then dies
+# on the first CUDA op with "no kernel image is available for execution on
+# the device". Blackwell needs CUDA 12.8 wheels (PyTorch 2.7.0+). Install
+# torch FIRST, then this file:
+#   pip install 'torch==2.7.1' --index-url https://download.pytorch.org/whl/cu128
 #
 # Apple Silicon and CPU-only machines need nothing extra — faster-whisper and
 # kokoro-onnx below both run on CPU, and Ollama drives the GPU itself.

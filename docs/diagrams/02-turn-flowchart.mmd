@@ -1,0 +1,24 @@
+flowchart TD
+  A[Mic PCM16 16 kHz over WS binary] --> B{Agent speaking?}
+  B -->|yes below barge-in| GATE[Gate mic avoid self-answer loop]
+  GATE --> A
+  B -->|yes barge-in| INT[Interrupt stop TTS return floor]
+  INT --> C
+  B -->|no| C[Silero VAD 576 sample window D-10]
+  C --> D[Segmenter 320ms preroll 800ms silence]
+  D --> E{Utterance ended?}
+  E -->|no| F{Teaching and 4s stall?}
+  F -->|yes| HINT[Hesitation hint via LLM]
+  F -->|no| A
+  E -->|yes| STT[STT Faster-Whisper or Groq]
+  STT --> LLM[LLM stream with mode prompt]
+  LLM --> CH[Sentence chunker first clause at comma]
+  CH --> TTS[TTS Kokoro stream]
+  TTS --> OUT[PCM16 24 kHz heard before LLM finishes]
+  HINT --> CH
+  OUT --> TEL[Queue telemetry off hot path]
+  TEL --> DB[(SQLite turns)]
+  STT --> UROW[User turn text stt_ms hesitation]
+  OUT --> AROW[Assistant turn llm tts e2e correction]
+  UROW --> DB
+  AROW --> DB

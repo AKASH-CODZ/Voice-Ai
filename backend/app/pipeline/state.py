@@ -135,6 +135,21 @@ class ConversationState:
 
         if user_text:
             messages.append({"role": "user", "content": user_text})
+
+        # llama3.2-instruct (and most chat tags) emit an empty completion when
+        # the last role is system/assistant — measured empty `eval_count=1` on
+        # a system-only greet. The agent speaks first (`greet()`), and teaching
+        # stall intervention also has no user utterance. Inject a kick that is
+        # NOT appended to history, so it never lands in the transcript.
+        if messages[-1]["role"] != "user":
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Please greet me and start the conversation."
+                    if not self.history
+                    else "Please continue."
+                ),
+            })
         return messages
 
     # ── history ──────────────────────────────────────────────

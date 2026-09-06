@@ -15,7 +15,10 @@
  */
 
 const LEAD_TIME = 0.08;   // 80 ms
-const MAX_DRIFT = 0.35;   // resync if we fall this far behind
+// Only an *underrun* (cursor in the past) should resync. A previous MAX_DRIFT
+// cap of 350 ms treated healthy queued TTS as an error: after ~3×120 ms
+// slices the next chunk was scheduled at "now", overlapping the first 2–3
+// words and dropping the rest of a 20-word reply. Cap runaway clocks only.
 
 export class AudioPlayback {
   private ctx: AudioContext | null = null;
@@ -49,19 +52,21 @@ export class AudioPlayback {
   enqueue(pcm: ArrayBuffer): void {
     if (!this.ctx || !this.gain) return;
 
-    const view = new Int16Array(pcm);
+    if (pcm.byteLength < 2) return;
+    const view = new Int16Array(pcm, 0, Math.floor(pcm.byteLength / 2));
     if (view.length === 0) return;
 
-    const buffer = this.ctx.createBuffer(1, view.length, this.sampleRate);
-    const channel = buffer.getChannelData(0);
-    for (let i = 0; i < view.length; i += 1) channel[i] = view[i] / 32768;
+    const ctxRate = this.ctx.sampleRate;
+    const floats = resampleInt16(view, this.sampleRate, ctxRate);
+    const buffer = this.ctx.createBuffer(1, floats.length, ctxRate);
+    buffer.getChannelData(0).set(floats);
 
     const now = this.ctx.currentTime;
     // If the stream stalled (or this is the first chunk of a turn) the cursor
     // is in the past; restart it ahead of now rather than scheduling into a
-    // time that has already elapsed, which the browser would play immediately
-    // and out of order.
-    if (this.nextStartTime < now + 0.005 || this.nextStartTime > now + MAX_DRIFT + LEAD_TIME) {
+    // time that has already elapsed, which the browser would skip.
+    // Do NOT reset when the cursor is in the future — that is queued speech.
+    if (this.nextStartTime < now + 0.005) {
       this.nextStartTime = now + LEAD_TIME;
     }
 
@@ -112,4 +117,24 @@ export class AudioPlayback {
       this.analyser = null;
     }
   }
+}
+
+function resampleInt16(view: Int16Array, srcRate: number, dstRate: number): Float32Array {
+  if (Math.abs(dstRate - srcRate) < 0.5) {
+    const out = new Float32Array(view.length);
+    for (let i = 0; i < view.length; i += 1) out[i] = view[i] / 32768;
+    return out;
+  }
+  const outLen = Math.max(1, Math.round(view.length * dstRate / srcRate));
+  const out = new Float32Array(outLen);
+  const step = srcRate / dstRate;
+  const last = view.length - 1;
+  for (let i = 0; i < outLen; i += 1) {
+    const src = i * step;
+    const j = Math.min(last, Math.floor(src));
+    const k = Math.min(last, j + 1);
+    const frac = src - Math.floor(src);
+    out[i] = (view[j] * (1 - frac) + view[k] * frac) / 32768;
+  }
+  return out;
 }

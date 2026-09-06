@@ -4,6 +4,9 @@ The headline test here (`test_detects_real_speech`) exists because the Silero
 v5 wrapper shipped broken at first: without the 64-sample context prefix the
 model returns ~0.003 for speech AND silence, raising nothing. The agent simply
 never responds. These tests are the tripwire for that class of failure.
+
+The speech fixture is real speech (macOS `say`, or Kokoro on Linux) — a
+synthetic tone scores the same ~0.003 and would hide the bug. See conftest.py.
 """
 
 from __future__ import annotations

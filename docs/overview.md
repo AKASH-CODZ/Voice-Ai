@@ -15,20 +15,23 @@ the system prompt and whether hesitation reaches the model differ. Adding a
 fourth mode is a prompt file plus an enum member (`backend/app/pipeline/state.py`).
 
 ## Who uses it
-Single user (Akash), for interview practice and spoken-English drilling.
-Sessions are IP-bound, not account-based — see `decisions.md` D-04.
+Anyone who clones the repo. Sessions are IP-bound + `localStorage`, not
+accounts — see `decisions.md` D-04. The author's two test laptops (Apple M4
+and an RTX 5070) are independent hosts, not a split deployment.
 
 ## Non-goals
 - Not multi-tenant SaaS. No auth, no billing, no admin panel.
 - Not trying to match LiveKit/WebRTC-grade transport — see D-01.
 - The `.md` transcript export is intentionally analysis-free (D-05); scoring
   and hesitation data live in SQLite only, queried separately.
+- Not a multi-machine product. One clone runs on one computer.
 
 ## Current milestone
-Feature-complete and verified end-to-end on the dev machine (Apple M4,
-CPU-only STT/TTS). **Not yet verified on the target GPU (RTX 5070), no Docker
-image has been built, no real Groq API call has been made.** See `HANDOFF.md`
-at the repo root for the live state and next steps.
+Voice pipeline is feature-complete and measured on two **independent** test
+machines (M4 CPU local; RTX 5070 CUDA local at 530 ms E2E). Docker images
+are written but not yet built on a daemon. Cloud (Groq) error paths are
+tested; a live Groq key is still optional for contributors. See D-18 for
+the clone → probe → route story.
 
 ## Original spec
 `../../Hybrid AI Voice Agent Technical Plan.docx` (two levels up: this repo's

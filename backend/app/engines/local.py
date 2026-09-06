@@ -140,8 +140,9 @@ class FasterWhisperSTT(STTEngine):
 class OllamaLLM(LLMEngine):
     name = "ollama"
 
-    def __init__(self) -> None:
+    def __init__(self, model: str | None = None) -> None:
         self._client: httpx.AsyncClient | None = None
+        self._model = model or settings.ollama_model
 
     async def load(self) -> None:
         if self._client is None:
@@ -153,21 +154,25 @@ class OllamaLLM(LLMEngine):
         # Warm the model. The first request after a cold start pays the full
         # weight-load cost (seconds on a 3B), and paying it here rather than on
         # the user's first sentence is the difference between a snappy demo and
-        # an awkward silence.
-        try:
-            await self._client.post(
-                "/api/chat",
-                json={
-                    "model": settings.ollama_model,
-                    "messages": [{"role": "user", "content": "hi"}],
-                    "stream": False,
-                    "options": {"num_predict": 1},
-                    "keep_alive": "30m",
-                },
+        # an awkward silence. A missing/wrong tag must fail here so the router
+        # can fall back to cloud *before* the user speaks (D-18).
+        response = await self._client.post(
+            "/api/chat",
+            json={
+                "model": self._model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+                "options": {"num_predict": 1},
+                "keep_alive": "30m",
+            },
+        )
+        if response.status_code == 404:
+            raise RuntimeError(
+                f"Ollama model {self._model} is not pulled. "
+                f"Run: ollama pull {self._model}"
             )
-            log.info("Ollama warm: %s", settings.ollama_model)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Ollama warm-up failed (%s) — first turn will be slower", exc)
+        response.raise_for_status()
+        log.info("Ollama warm: %s", self._model)
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         if self._client is None:
@@ -175,7 +180,7 @@ class OllamaLLM(LLMEngine):
         assert self._client is not None
 
         payload = {
-            "model": settings.ollama_model,
+            "model": self._model,
             "messages": messages,
             "stream": True,
             "keep_alive": "30m",
@@ -230,12 +235,28 @@ def _enable_onnx_cuda() -> None:
     """
     os.environ.setdefault("ONNX_PROVIDER", "CUDAExecutionProvider")
 
-    # Load ONLY these three, in this order. Globbing every lib*.so under
-    # nvidia/*/lib would also pull cuDNN's optional engine libraries, one of
-    # which (libcudnn_engines_precompiled) is ~700 MB on its own — a real
-    # problem inside WSL2's default 7.6 GB RAM cap. cuDNN resolves those
-    # itself, on demand, from its own directory.
-    for soname in ("libcublas.so.12", "libcublasLt.so.12", "libcudnn.so.9"):
+    # Preload the CUDA/cuDNN sonames ORT actually dlopens, in link order.
+    # Globbing every lib*.so under nvidia/*/lib also pulls
+    # libcudnn_engines_precompiled (~700 MB) — reckless inside WSL2's 7.6 GB
+    # RAM cap. Do not add *engines* here. Measured miss if we stop at
+    # libcudnn.so.9: "libcudnn_adv.so.9: cannot open shared object file"
+    # and a silent CPU fallback.
+    for soname in (
+        "libcublas.so.12",
+        "libcublasLt.so.12",
+        "libcudnn.so.9",
+        "libcudnn_ops.so.9",
+        "libcudnn_cnn.so.9",
+        "libcudnn_adv.so.9",
+        "libcudnn_graph.so.9",
+        "libcudnn_heuristic.so.9",
+        "libcudnn_ext.so.9",
+        "libcudnn_engines_runtime_compiled.so.9",
+        "libcudnn_engines_tensor_ir.so.9",
+        # ORT's CUDA provider DT_NEEDs this. mmap cost is real (~700 MB) but
+        # without it the provider fails to load and silently falls back to CPU.
+        "libcudnn_engines_precompiled.so.9",
+    ):
         for base in site.getsitepackages():
             for lib in glob.glob(os.path.join(base, "nvidia", "*", "lib", soname)):
                 try:
@@ -341,12 +362,15 @@ class KokoroTTS(TTSEngine):
         self._kokoro = None
 
 
-def build_local_engine(gpu_label: str | None = None) -> VoiceEngine:
+def build_local_engine(
+    gpu_label: str | None = None,
+    ollama_model: str | None = None,
+) -> VoiceEngine:
     label = f"Local Engine ({gpu_label})" if gpu_label else "Local Engine"
     return VoiceEngine(
         kind="local",
         label=label,
         stt=FasterWhisperSTT(),
-        llm=OllamaLLM(),
+        llm=OllamaLLM(model=ollama_model),
         tts=KokoroTTS(),
     )

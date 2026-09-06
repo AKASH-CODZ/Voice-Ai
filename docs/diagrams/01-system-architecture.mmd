@@ -1,0 +1,45 @@
+flowchart TB
+  subgraph User
+    MIC[Microphone]
+    SPK[Speakers / headphones]
+    BROWSER[Browser UI - orb transcript modes]
+  end
+
+  subgraph Frontend_Next_3000
+    WORKLET[AudioWorklet PCM16 16 kHz]
+    PLAY[AudioPlayback PCM16 24 kHz]
+    HOOK[useVoiceSession]
+    PROXY["/api rewrite to backend"]
+  end
+
+  subgraph Backend_FastAPI_8000
+    WS["WebSocket /ws/voice binary PCM plus JSON"]
+    REST["REST /api health sessions export"]
+    VAD[Silero VAD plus segmenter]
+    ORCH[Orchestrator]
+    ROUTER[Engine router]
+    STATE[ConversationState prompts per mode]
+    TEL[Telemetry queue]
+    DB[(SQLite WAL users sessions turns)]
+  end
+
+  subgraph Engines
+    LOCAL[LOCAL Whisper plus Ollama plus Kokoro]
+    CLOUD[CLOUD Groq STT/LLM plus Kokoro CPU]
+  end
+
+  MCP[MCP server DB read-only]
+
+  MIC --> WORKLET --> HOOK --> WS
+  WS --> PLAY --> SPK
+  BROWSER --> HOOK
+  BROWSER --> PROXY --> REST
+  WS --> VAD --> ORCH
+  ORCH --> STATE
+  ORCH --> ROUTER
+  ROUTER --> LOCAL
+  ROUTER --> CLOUD
+  ORCH --> WS
+  ORCH --> TEL --> DB
+  REST --> DB
+  MCP --> DB

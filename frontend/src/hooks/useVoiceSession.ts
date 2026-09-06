@@ -9,11 +9,19 @@ import type {
   ServerEvent, TranscriptTurn,
 } from "@/lib/types";
 
-const WS_URL =
-  process.env.NEXT_PUBLIC_WS_URL ??
-  (typeof window !== "undefined"
-    ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8000/ws/voice`
-    : "ws://localhost:8000/ws/voice");
+function resolveWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  const backend = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+  try {
+    const u = new URL(backend);
+    const scheme = u.protocol === "https:" ? "wss:" : "ws:";
+    return `${scheme}//${u.host}/ws/voice`;
+  } catch {
+    return "ws://localhost:8000/ws/voice";
+  }
+}
+
+const WS_URL = resolveWsUrl();
 
 export interface VoiceSessionState {
   status: ConnectionStatus;
@@ -150,7 +158,8 @@ export function useVoiceSession() {
         break;
 
       case "error":
-        patch({ error: event.message, status: event.fatal ? "error" : undefined as never });
+        if (event.fatal) patch({ error: event.message, status: "error" });
+        else patch({ error: event.message });
         break;
 
       default:

@@ -28,7 +28,7 @@ def _auto_mode(monkeypatch):
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "engine_mode", "auto")
-    monkeypatch.setattr(settings, "min_free_vram_gb", 6.0)
+    monkeypatch.setattr(settings, "min_free_vram_gb", 3.5)
     monkeypatch.setattr(settings, "gpu_thermal_limit_c", 85)
 
 
@@ -50,6 +50,17 @@ def test_insufficient_vram_routes_cloud():
     engine, reason = decide_engine(make_report(gpu=gpu))
     assert engine == "cloud"
     assert "3.1" in reason
+
+
+def test_5070_with_36gb_free_routes_local():
+    """Measured on the target laptop: 3.6–4.3 GB free, local budget ~3.3 GB.
+    The old 6.0 GB floor routed this to cloud even though it fits."""
+    gpu = GPUInfo(
+        0, "NVIDIA GeForce RTX 5070 Laptop GPU", 8.0, 3.6, 4.4, 52, 3, "596.36",
+    )
+    engine, reason = decide_engine(make_report(gpu=gpu))
+    assert engine == "local"
+    assert "3.6" in reason
 
 
 def test_thermal_throttle_routes_cloud():
@@ -98,3 +109,68 @@ def test_reason_is_always_human_readable():
     ):
         _, reason = decide_engine(report)
         assert reason and reason[0].isupper() and reason.endswith(".")
+
+
+def test_ollama_starting_on_gpu_routes_local():
+    engine, reason = decide_engine(make_report(ollama_status="starting"))
+    assert engine == "local"
+    assert "starting" in reason.lower()
+
+
+def test_inventoried_coder_only_routes_cloud():
+    report = make_report(
+        ollama_status="up",
+        ollama_models=["qwen2.5-coder:1.5b"],
+        ollama_model=None,
+        ollama_pick_reason=(
+            "Ollama is up but no instruct model is pulled "
+            "(found qwen2.5-coder:1.5b) — routing to Groq."
+        ),
+    )
+    engine, reason = decide_engine(report)
+    assert engine == "cloud"
+    assert "instruct" in reason.lower() or "coder" in reason.lower()
+
+
+def test_should_degrade_ignores_the_load_floor(monkeypatch):
+    """2 GB free is below MIN_FREE_VRAM_GB=3.5 but above the 1 GB OOM guard.
+    A live local session must not bounce to Groq just because weights loaded."""
+    from app.core import hardware as hw
+    from app.core.config import settings
+    from app.engines.router import EngineRouter
+
+    gpu = GPUInfo(
+        0, "NVIDIA GeForce RTX 5070 Laptop GPU", 8.0, 2.0, 6.0, 52, 3, "596.36",
+    )
+    monkeypatch.setattr(hw, "probe", lambda: make_report(gpu=gpu))
+    monkeypatch.setattr(settings, "degrade_free_vram_gb", 1.0)
+    monkeypatch.setattr(settings, "min_free_vram_gb", 3.5)
+    should, _ = EngineRouter().should_degrade()
+    assert should is False
+
+
+def test_should_degrade_fires_near_oom(monkeypatch):
+    from app.core import hardware as hw
+    from app.engines.router import EngineRouter
+
+    gpu = GPUInfo(
+        0, "NVIDIA GeForce RTX 5070 Laptop GPU", 8.0, 0.4, 7.6, 52, 3, "596.36",
+    )
+    monkeypatch.setattr(hw, "probe", lambda: make_report(gpu=gpu))
+    should, reason = EngineRouter().should_degrade()
+    assert should is True
+    assert "0.4" in reason
+
+
+def test_health_payload_includes_model_fields():
+    report = make_report(
+        ollama_status="up",
+        ollama_model="llama3.2:3b-instruct-q4_K_M",
+        ollama_models=["llama3.2:3b-instruct-q4_K_M"],
+        whisper_device="cpu",
+    )
+    payload = report.to_dict()
+    assert payload["ollama_model"] == "llama3.2:3b-instruct-q4_K_M"
+    assert payload["ollama_models"] == ["llama3.2:3b-instruct-q4_K_M"]
+    assert payload["ollama_status"] == "up"
+    assert payload["whisper_device"] == "cpu"

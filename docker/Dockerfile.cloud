@@ -24,7 +24,11 @@ WORKDIR /app
 # Requirements first: this layer is cached across code changes, so an edit to
 # a Python file does not reinstall the dependency tree.
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --upgrade pip && pip install -r backend/requirements.txt
+# kokoro-onnx lives in requirements-local.txt (with faster-whisper). The cloud
+# image still needs it for CLOUD_TTS_PROVIDER=kokoro-onnx, without pulling torch.
+RUN pip install --upgrade pip \
+    && pip install -r backend/requirements.txt \
+    && pip install kokoro-onnx==0.4.9
 
 # Kokoro runs on CPU in this image, so we still need its weights and Silero.
 COPY tools/download_models.py ./tools/download_models.py

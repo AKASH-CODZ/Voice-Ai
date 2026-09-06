@@ -34,7 +34,12 @@ class Settings(BaseSettings):
 
     # ── Engine routing ───────────────────────────────────────
     engine_mode: Literal["auto", "local", "cloud"] = "auto"
-    min_free_vram_gb: float = 6.0
+    min_free_vram_gb: float = 3.5
+    # Mid-session OOM guard. Lower than min_free_vram_gb on purpose: the
+    # 3.5 GB floor is "room to *load* Whisper + LLM + Kokoro". Once they
+    # are resident, free VRAM drops by ~3 GB, so using 3.5 here would
+    # bounce every healthy local session to Groq after the first turn.
+    degrade_free_vram_gb: float = 1.0
     gpu_thermal_limit_c: int = 85
 
     # ── Local pipeline ───────────────────────────────────────

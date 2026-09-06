@@ -1,0 +1,28 @@
+# Keep the build context small. Dockerfile.cloud COPY is selective, but
+# `docker build` still tars the whole context first (was 1.4 GB without this).
+.env
+.env.*
+!.env.example
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/tsconfig.tsbuildinfo
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/exports
+models
+*.onnx
+*.gguf
+*.pt
+*.bin
+.DS_Store
+**/.DS_Store

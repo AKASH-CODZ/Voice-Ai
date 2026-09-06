@@ -29,6 +29,9 @@ mcp: ## Run the EchoSync MCP server over stdio
 bench: ## Measure per-stage latency for both engines
 	./.venv/bin/python tools/bench_latency.py
 
+modes: ## Judge casual / teaching / observation against the live Ollama model
+	./.venv/bin/python tools/check_modes.py
+
 test: ## Run the test suite
 	./.venv/bin/pytest tests -v
 
@@ -45,4 +48,4 @@ up-cloud: ## Docker: cloud/demo profile
 down: ## Stop all containers
 	docker compose -f docker/docker-compose.yml down
 
-.PHONY: help setup models hw backend frontend mcp bench test lint up-gpu up-cloud down
+.PHONY: help setup models hw backend frontend mcp bench modes test lint up-gpu up-cloud down

@@ -1,0 +1,44 @@
+flowchart TB
+  subgraph PAGE
+    PRE[GET /api/health preflight badge]
+    START[Start / Stop]
+    TOPIC[Optional scenario]
+  end
+
+  subgraph COMPONENTS
+    ORB[VoiceOrb speaking state]
+    BADGE[EngineBadge local or cloud]
+    MODE[ModeSwitcher three modes]
+    TR[Transcript turns]
+    LAT[LatencyStrip stt llm tts e2e]
+  end
+
+  subgraph HOOK
+    WS["WebSocket ws host 8000 /ws/voice"]
+    SEND[JSON start mode interrupt stop]
+    RECV[JSON events plus binary audio]
+  end
+
+  subgraph AUDIO
+    CAP[audioCapture getUserMedia Worklet 16 kHz]
+    PLAY[audioPlayback scheduled PCM 24 kHz]
+    WP[recorder-processor.js]
+  end
+
+  PROXY[next.config rewrite /api to backend]
+
+  PRE --> PROXY
+  START --> HOOK
+  TOPIC --> SEND
+  MODE --> SEND
+  BADGE --> SEND
+  HOOK --> WS
+  WS --> SEND
+  WS --> RECV
+  CAP --> WP
+  CAP --> WS
+  RECV --> PLAY
+  RECV --> ORB
+  RECV --> TR
+  RECV --> LAT
+  RECV --> BADGE

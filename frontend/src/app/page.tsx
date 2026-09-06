@@ -14,6 +14,8 @@ export default function Home() {
   const { state, start, stop, setMode, setEngine, interrupt } = useVoiceSession();
   const [topic, setTopic] = useState("");
   const [preflight, setPreflight] = useState<HealthResponse | null>(null);
+  const [healthError, setHealthError] = useState(false);
+  const [enginePref, setEnginePref] = useState<EnginePreference>("auto");
 
   const live = state.status === "live";
   const busy = state.status === "connecting" || state.status === "requesting-mic";
@@ -25,21 +27,29 @@ export default function Home() {
     let cancelled = false;
     fetch("/api/health")
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (!cancelled) setPreflight(data); })
-      .catch(() => undefined);
+      .then((data) => {
+        if (cancelled) return;
+        if (data) {
+          setPreflight(data);
+          setHealthError(false);
+        } else {
+          setHealthError(true);
+        }
+      })
+      .catch(() => { if (!cancelled) setHealthError(true); });
     return () => { cancelled = true; };
   }, []);
 
   const handleStart = useCallback(() => {
-    void start({ mode: state.mode, engine: "auto", topic: topic.trim() || undefined });
-  }, [start, state.mode, topic]);
+    void start({ mode: state.mode, engine: enginePref, topic: topic.trim() || undefined });
+  }, [start, state.mode, enginePref, topic]);
 
   const handleModeChange = useCallback((mode: Mode) => {
-    if (live) setMode(mode);
-    else setMode(mode);
-  }, [live, setMode]);
+    setMode(mode);
+  }, [setMode]);
 
   const handleOverride = useCallback((pref: EnginePreference) => {
+    setEnginePref(pref);
     if (live) setEngine(pref);
   }, [live, setEngine]);
 
@@ -58,8 +68,9 @@ export default function Home() {
             engine={engine}
             reason={engineReason}
             hardware={hardware}
-            onOverride={live ? handleOverride : undefined}
-            disabled={!live}
+            preference={enginePref}
+            onOverride={handleOverride}
+            healthError={healthError}
           />
 
           <ModeSwitcher mode={state.mode} onChange={handleModeChange} disabled={busy} />
@@ -93,7 +104,11 @@ export default function Home() {
             stalled={state.stalled}
           />
 
-          <StatusLine state={state} />
+          <StatusLine
+            state={state}
+            ollamaStatus={hardware?.ollama_status}
+            healthError={healthError && !hardware}
+          />
 
           <div className="flex items-center gap-2">
             {!live ? (
@@ -175,11 +190,21 @@ function Header({ version }: { version?: string }) {
   );
 }
 
-function StatusLine({ state }: { state: ReturnType<typeof useVoiceSession>["state"] }) {
+function StatusLine({
+  state, ollamaStatus, healthError,
+}: {
+  state: ReturnType<typeof useVoiceSession>["state"];
+  ollamaStatus?: string;
+  healthError?: boolean;
+}) {
+  const idle = state.status === "idle" || state.status === "closed";
   const text =
-    state.status === "requesting-mic" ? "Waiting for microphone permission…"
+    healthError && idle ? "Backend is down — start it with make backend."
+    : state.status === "requesting-mic" ? "Waiting for microphone permission…"
     : state.status === "connecting" ? "Connecting to the voice engine…"
     : state.status === "error" ? "Something went wrong"
+    : idle && ollamaStatus === "starting" ? "Starting local model…"
+    : idle ? "Ready when you are"
     : state.status !== "live" ? "Ready when you are"
     : state.stalled ? "Take your time"
     : state.agentSpeaking ? "EchoSync is speaking — just talk to interrupt"

@@ -1,11 +1,24 @@
+---
+title: EchoSync AI
+emoji: 🎙️
+colorFrom: indigo
+colorTo: rose
+sdk: docker
+app_port: 8000
+pinned: false
+short_description: Real-time spoken-English practice agent (cloud profile)
+---
+
 # EchoSync AI
 
-A real-time English conversation agent that runs **entirely on your own GPU**,
-and falls back to the cloud for anyone who doesn't have one — same interface,
-same three modes, same logging, no setup.
+A real-time English conversation agent that runs **entirely on your own
+machine** when that machine can host it, and falls back to Groq when it
+can't — same interface, same three modes, same logging.
 
 Built for interview practice and spoken-English drilling. You talk, it talks
 back, and it behaves differently depending on which mode you put it in.
+
+One clone, one computer. There is no pair of machines to wire together.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -20,13 +33,84 @@ back, and it behaves differently depending on which mode you put it in.
 │  SQLite (WAL) · IP-bound sessions · dynamic engine router    │
 └───────────┬─────────────────────────────┬───────────────────┘
             │                             │
-   [GPU, ≥6 GB VRAM free]        [no GPU / demo]
+   [GPU / Apple Silicon + Ollama]         [no GPU / demo]
             ▼                             ▼
  ┌────────────────────────┐   ┌──────────────────────────┐
  │ Faster-Whisper (CUDA)  │   │ Groq whisper-large-v3    │
  │ Ollama Llama-3.2-3B    │   │ Groq llama-3.1-8b-instant│
  │ Kokoro-82M             │   │ Kokoro-82M (CPU)         │
  └────────────────────────┘   └──────────────────────────┘
+```
+
+## Two ways in
+
+GitHub cannot host the WebSocket voice path. A visitor gets **two doors**:
+
+| Door | What happens |
+|---|---|
+| **Try live (Groq)** | A hosted Hugging Face Space. Your browser mic talks to Groq using the operator's key, stored as a **Space secret** (never in git). Your laptop does not need Ollama, a GPU, or this repo. |
+| **Run local (Ollama)** | Clone → `make setup && make models`. The probe recommends a model **for that machine** and auto-starts Ollama if it is installed but stopped. |
+
+The live demo will **not** download an Ollama installer onto your laptop.
+That would be a desktop installer, not a Space.
+
+### Try live (Groq)
+
+**Status:** the Space is not linked yet. It goes live only after
+`GROQ_API_KEY` is set as a Hugging Face Space secret. Config is already
+in this repo (YAML frontmatter above, `Dockerfile`, `app.py`).
+
+Until the link is here, the cloud path is clone + your own key in `.env`.
+
+### Run local (Ollama)
+
+```bash
+git clone https://github.com/AKASH-CODZ/Voice-Ai.git
+cd Voice-Ai
+cp .env.example .env          # optional: GROQ_API_KEY for cloud fallback
+make setup && make models     # venv + deps + Silero (2 MB) + Kokoro (330 MB)
+make hw                       # same diagnostic the router uses
+make backend                  # :8000
+make frontend                 # :3000
+```
+
+Use **Python 3.11 or 3.12** (`python3` on some systems is 3.13/3.14 and
+will fail `onnxruntime` / `faster-whisper` wheels).
+
+- **NVIDIA GPU or Apple Silicon + Ollama** → local (Whisper + Ollama + Kokoro).
+  If Ollama is installed but stopped, the backend starts it on loopback.
+- **No GPU / no Ollama** → cloud, if `GROQ_API_KEY` is set.
+- **Neither** → the badge says what is missing; the session does not crash.
+
+We do **not** silently `ollama pull` a ~2 GB tag on first paint — that
+would stall the badge. The badge names the tag; pull it once:
+
+```bash
+ollama pull llama3.2:3b-instruct-q4_K_M
+```
+
+`ENGINE_MODE=auto` is the default. Override with the env var or the
+auto / local / cloud buttons on the badge.
+
+### Docker
+
+GPU-less clone of the cloud path:
+
+```bash
+make up-cloud    # docker compose --profile cloud up --build
+```
+
+CUDA host (optional):
+
+```bash
+make up-gpu      # docker compose --profile gpu up --build
+```
+
+Equivalent compose invocations:
+
+```bash
+docker compose -f docker/docker-compose.yml --profile gpu   up --build
+docker compose -f docker/docker-compose.yml --profile cloud up --build
 ```
 
 ## The three modes
@@ -45,33 +129,6 @@ is a prompt file plus an enum member.
 Hesitation and correction flags are recorded in **every** mode. Observation mode
 just never shows them to you — the UI hides them too, not only the agent.
 
-## Quick start
-
-```bash
-cp .env.example .env
-make setup        # venv + backend deps + frontend deps
-make models       # Silero VAD (2 MB) + Kokoro TTS (330 MB)
-make hw           # tells you whether this machine can run locally, and why not
-```
-
-Then either run locally:
-
-```bash
-ollama pull llama3.2:3b-instruct-q4_K_M
-make backend      # :8000
-make frontend     # :3000
-```
-
-…or set `GROQ_API_KEY` in `.env` and skip the model download entirely — the
-router will send you to the cloud pipeline automatically.
-
-### Docker
-
-```bash
-docker compose -f docker/docker-compose.yml --profile gpu   up --build   # local GPU
-docker compose -f docker/docker-compose.yml --profile cloud up --build   # CPU / demo
-```
-
 ## Hardware routing
 
 At handshake the backend probes the machine and picks an engine, then tells you
@@ -80,32 +137,28 @@ diagnostic — free VRAM, GPU temperature, whether Ollama answered.
 
 | Condition | Route |
 |---|---|
-| CUDA GPU, ≥ 6 GB VRAM free, Ollama up | **local** |
+| CUDA GPU, ≥ 3.5 GB VRAM free, Ollama up | **local** |
 | Apple Silicon + Ollama up | **local** (Metal for the LLM, CPU for STT/TTS) |
 | GPU at or above the thermal limit | cloud — avoids throttled latency |
-| < 6 GB VRAM free, or no GPU | cloud |
+| < 3.5 GB VRAM free, or no GPU | cloud |
 | Local engine fails to load | cloud, with the reason surfaced — the session never dies |
 
 Override any of it with `ENGINE_MODE` or the badge's auto/local/cloud buttons.
 
 ## Measured latency
 
-`make bench` runs five real turns and reports per-stage numbers **for your
-machine**, then names the dominant stage and what to do about it.
+`make bench` runs five real turns on **the machine you ran it on**. Two
+laptops were used only as independent test hosts (they never run as a pair):
 
-On the development machine (Apple M4, **CPU-only** STT and TTS — not the target
-hardware):
+| Stage | RTX 5070 Laptop (CUDA) | Apple M4 (CPU STT/TTS, Metal LLM) |
+|---|---|---|
+| STT (`base.en`) | 75 ms | 252 ms |
+| LLM time-to-first-token | 35 ms | 164 ms |
+| TTS (Kokoro) | 263 ms | 653 ms |
+| **End to end** | **530 ms** (443–596, all 5 under 800) | 1180 ms |
 
-| Stage | Measured |
-|---|---|
-| STT (`base.en`) | 252 ms |
-| LLM time-to-first-token | 164 ms |
-| TTS (Kokoro) | 653 ms |
-| **End to end** | **1180 ms** |
-
-That is above the 800 ms target, and TTS on CPU is why. On a CUDA GPU the same
-pipeline should land considerably lower — but that number is not measured here,
-so it is not claimed here. Run `make bench` on your own hardware.
+Quote **530 ms** for a CUDA laptop in this class. Your numbers will differ;
+run `make bench` locally.
 
 ## What's actually hard about this
 
@@ -171,14 +224,14 @@ echosync-ai/
 ├── frontend/src/    Next.js app, audio worklet, orb, transcript
 ├── mcp/             MCP server (read-only, standalone)
 ├── tools/           hardware check, model downloader, latency bench
-├── tests/           68 tests
+├── tests/           pytest (93 tests at last count)
 └── docs/            overview · architecture · data-model · decisions · features/
 ```
 
 ## Tests
 
 ```bash
-make test     # 68 tests
+make test     # pytest
 make lint     # ruff + tsc
 ```
 
@@ -190,11 +243,18 @@ against one would hide the exact bug it's meant to catch.
 
 - Python **3.11 or 3.12** (3.13+ has patchy wheel coverage for onnxruntime)
 - Node 20+
-- Optional: NVIDIA GPU with ≥ 6 GB free VRAM + Ollama, or a `GROQ_API_KEY`
+- Optional: NVIDIA GPU with ≥ 3.5 GB free VRAM + Ollama, or a `GROQ_API_KEY`
+
+## Publishing
+
+Source: [github.com/AKASH-CODZ/Voice-Ai](https://github.com/AKASH-CODZ/Voice-Ai)
+(this directory is the public tree — not a parent workspace of session notes).
+
+The Hugging Face Space uses this README's YAML frontmatter and the root
+`Dockerfile` (cloud profile). Deploy the Space **only after**
+`GROQ_API_KEY` is a Space secret — never commit the key.
 
 ---
 
-**Status and open questions** live in [`docs/decisions.md`](docs/decisions.md).
-Current work-in-progress state and next steps are in
-[`../HANDOFF.md`](../HANDOFF.md); the historical build log is in
-[`../logs/archive.md`](../logs/archive.md).
+Design choices live in [`docs/decisions.md`](docs/decisions.md). You do not
+need the author's session notes to run the app.

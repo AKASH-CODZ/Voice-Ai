@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from app.api import routes_sessions, routes_system, ws_voice
 from app.core import logging as log_config
 from app.core.config import settings
 from app.core.database import db
+from app.core.ollama import ensure_ollama
 from app.engines.router import router as engine_router
 
 log = logging.getLogger("echosync")
@@ -25,6 +27,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log_config.configure()
     await db.connect()
 
+    # Kick Ollama so the first /api/health can say "starting" rather than
+    # "unreachable", and so handshake does not pay the full wait.
+    asyncio.create_task(asyncio.to_thread(ensure_ollama, 0.0))
+
     report = engine_router.probe()
     gpu = report.primary_gpu
     log.info("EchoSync AI %s starting (%s)", __version__, settings.echosync_env)
@@ -33,8 +39,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if gpu:
         log.info("GPU: %s · %.1f/%.1f GB VRAM free · %s°C",
                  gpu.name, gpu.free_vram_gb, gpu.total_vram_gb, gpu.temperature_c)
+    elif report.apple_silicon:
+        log.info("GPU: Apple Silicon (Metal) — no CUDA; Whisper/Kokoro on CPU")
     else:
         log.info("GPU: none detected")
+    if report.ollama_model:
+        log.info("LLM: %s (%s)", report.ollama_model, report.ollama_status)
+    else:
+        log.info("Ollama: %s", report.ollama_status)
     log.info("Engine: %s — %s", report.recommended_engine, report.reason)
 
     # Engines are loaded lazily on the first connection rather than here. Two

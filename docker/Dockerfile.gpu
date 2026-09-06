@@ -1,15 +1,15 @@
 # ─────────────────────────────────────────────────────────────
-# Local GPU image — CUDA 12.6 runtime.
+# Local GPU image — CUDA 12.8 runtime.
 #
-# 12.6, not 12.1: the RTX 5070 is Blackwell (sm_120) and cu121 wheels contain
-# no kernels for it. A cu121 image builds and starts perfectly, then dies at
-# the first CUDA op with "no kernel image is available for execution on the
-# device" — see docs/DECISIONS.md → D-02.
+# 12.8, not 12.6/12.1: the RTX 5070 is Blackwell (sm_120). cu121 and even
+# torch 2.6.0+cu126 ship no sm_120 kernels — the image builds and starts,
+# then dies at the first CUDA op. PyTorch added Blackwell wheels in 2.7.0
+# on the cu128 index. See docs/decisions.md → D-02.
 #
 # Ollama is NOT inside this image. It runs on the host (or its own container)
 # so its model cache survives rebuilds; the compose file wires the connection.
 # ─────────────────────────────────────────────────────────────
-FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu22.04 AS base
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04 AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -24,11 +24,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY backend/requirements.txt backend/requirements-local.txt ./backend/
-# Torch from the cu126 index must land before the local extras, so that
-# faster-whisper builds against the right CUDA runtime.
+# Torch from the cu128 index must land before the local extras, so that
+# faster-whisper builds against the right CUDA runtime. Then swap the CPU
+# onnxruntime pulled in by requirements.txt for the GPU build — they ship
+# the same module and cannot coexist. (D-03 / D-14)
 RUN pip install --upgrade pip \
-    && pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu126 \
-    && pip install -r backend/requirements-local.txt
+    && pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/cu128 \
+    && pip install -r backend/requirements-local.txt \
+    && pip uninstall -y onnxruntime \
+    && pip install onnxruntime-gpu==1.20.2
 
 COPY tools/download_models.py ./tools/download_models.py
 RUN python tools/download_models.py
@@ -44,6 +48,7 @@ USER echosync
 ENV PYTHONPATH=/app/backend \
     ENGINE_MODE=auto \
     WHISPER_DEVICE=cuda \
+    KOKORO_DEVICE=cuda \
     DATABASE_PATH=/app/data/echosync.db \
     EXPORT_DIR=/app/data/exports \
     SILERO_VAD_PATH=/app/models/silero_vad.onnx \

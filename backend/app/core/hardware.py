@@ -9,6 +9,7 @@ run on your laptop and on a reviewer's Hugging Face Space.
 from __future__ import annotations
 
 import logging
+import os
 import platform
 import shutil
 from dataclasses import dataclass, asdict, field
@@ -17,6 +18,12 @@ from typing import Any
 import psutil
 
 from app.core.config import settings
+from app.core.ollama import (
+    ensure_ollama,
+    llm_budget_gb,
+    pick_from_models,
+    snapshot as ollama_snapshot,
+)
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +56,11 @@ class HardwareReport:
     platform: str = ""
     apple_silicon: bool = False
     ollama_reachable: bool = False
+    ollama_status: str = "down"  # up | starting | down | missing
+    ollama_model: str | None = None
+    ollama_models: list[str] = field(default_factory=list)
+    ollama_pick_reason: str = ""
+    whisper_device: str = ""
     cloud_credentials: bool = False
 
     # Verdict
@@ -138,18 +150,6 @@ def _is_apple_silicon() -> bool:
     return platform.system() == "Darwin" and platform.machine() == "arm64"
 
 
-def _ollama_reachable() -> bool:
-    """A quick, short-timeout liveness check. Local LLM routing is pointless
-    if the Ollama daemon is not actually up."""
-    import httpx
-
-    try:
-        r = httpx.get(f"{settings.ollama_base_url}/api/tags", timeout=0.75)
-        return r.status_code == 200
-    except Exception:  # noqa: BLE001
-        return False
-
-
 def _cpu_model() -> str:
     if platform.system() == "Windows":
         return platform.processor()
@@ -177,22 +177,56 @@ def _cpu_model() -> str:
     return platform.processor() or platform.machine()
 
 
-def probe(check_ollama: bool = True) -> HardwareReport:
-    """Run the full diagnostic and attach a routing verdict."""
+def probe(check_ollama: bool = True, ensure: bool = False) -> HardwareReport:
+    """Run the full diagnostic and attach a routing verdict.
+
+    ``ensure=True`` will spawn ``ollama serve`` if the daemon is down and
+    this process is allowed to (loopback URL + binary on PATH). Health uses
+    the cheap path; handshake and ``make hw`` pass ``ensure``.
+    """
     cuda_available, gpus = _probe_gpus()
     vm = psutil.virtual_memory()
+
+    if not check_ollama:
+        snap_status, snap_models = "down", []
+    elif ensure:
+        snap = ensure_ollama()
+        snap_status, snap_models = snap.status, snap.models
+    else:
+        snap = ollama_snapshot()
+        snap_status, snap_models = snap.status, snap.models
+
+    use_vram = bool(cuda_available and gpus)
+    available_ram = round(vm.available / _BYTES_PER_GB, 2)
+    total_ram = round(vm.total / _BYTES_PER_GB, 2)
+    budget = llm_budget_gb(
+        gpus[0].free_vram_gb if gpus else None,
+        available_ram,
+        use_vram=use_vram,
+        total_ram_gb=total_ram,
+    )
+    picked, pick_reason = pick_from_models(
+        snap_models, budget, preferred=settings.ollama_model,
+    ) if snap_status == "up" else (None, "")
 
     report = HardwareReport(
         cuda_available=cuda_available,
         gpus=gpus,
         cpu_model=_cpu_model(),
-        cpu_physical_cores=psutil.cpu_count(logical=False) or 0,
-        cpu_logical_cores=psutil.cpu_count(logical=True) or 0,
-        total_ram_gb=round(vm.total / _BYTES_PER_GB, 2),
-        available_ram_gb=round(vm.available / _BYTES_PER_GB, 2),
+        cpu_physical_cores=(physical := psutil.cpu_count(logical=False) or 0),
+        cpu_logical_cores=(
+            psutil.cpu_count(logical=True) or os.cpu_count() or physical or 0
+        ),
+        total_ram_gb=total_ram,
+        available_ram_gb=available_ram,
         platform=f"{platform.system()} {platform.release()}",
         apple_silicon=_is_apple_silicon(),
-        ollama_reachable=_ollama_reachable() if check_ollama else False,
+        ollama_reachable=snap_status in {"up", "starting"},
+        ollama_status=snap_status,
+        ollama_model=picked,
+        ollama_models=list(snap_models),
+        ollama_pick_reason=pick_reason,
+        whisper_device=settings.resolved_whisper_device,
         cloud_credentials=settings.has_cloud_credentials,
     )
 
@@ -219,15 +253,15 @@ def decide_engine(report: HardwareReport) -> tuple[str, str]:
     if not report.cuda_available or gpu is None:
         # Apple Silicon: no CUDA, but Ollama runs on Metal and the CPU handles
         # Whisper + Kokoro. Treat it as local-capable rather than GPU-less.
-        if report.apple_silicon and report.ollama_reachable:
-            return "local", (
-                "Apple Silicon with Ollama on Metal — running locally "
-                "(Whisper and Kokoro on CPU)."
-            )
         if report.apple_silicon:
-            return "cloud", (
-                f"Apple Silicon detected but Ollama is unreachable at "
-                f"{settings.ollama_base_url} — routing to Groq. Start Ollama to run locally."
+            return _local_if_ollama(
+                report,
+                ready=(
+                    "Apple Silicon with Ollama on Metal"
+                    + (f" — {report.ollama_model}" if report.ollama_model else "")
+                    + " (Whisper and Kokoro on CPU)."
+                ),
+                starting="Apple Silicon detected — starting the local Ollama model.",
             )
         return "cloud", "No CUDA device detected — routing to Groq."
 
@@ -243,10 +277,34 @@ def decide_engine(report: HardwareReport) -> tuple[str, str]:
             f"{settings.gpu_thermal_limit_c}°C limit — routing to Groq to avoid throttling."
         )
 
+    model_bit = f", {report.ollama_model}" if report.ollama_model else ", Ollama up"
+    return _local_if_ollama(
+        report,
+        ready=f"{gpu.name} — {gpu.free_vram_gb:.1f} GB VRAM free{model_bit}.",
+        starting=f"{gpu.name} is ready — starting the local Ollama model.",
+    )
+
+
+def _local_if_ollama(
+    report: HardwareReport, *, ready: str, starting: str,
+) -> tuple[str, str]:
+    """Shared Ollama gate used by the CUDA and Apple Silicon branches."""
+    if report.ollama_status == "starting":
+        return "local", starting
+    if report.ollama_status == "missing":
+        return "cloud", (
+            "Ollama is not installed — routing to Groq. "
+            "Install Ollama to run locally."
+        )
     if not report.ollama_reachable:
         return "cloud", (
-            f"GPU is ready but Ollama is unreachable at {settings.ollama_base_url} "
+            f"Ollama is unreachable at {settings.ollama_base_url} "
             "— routing to Groq. Start Ollama to use the local engine."
         )
-
-    return "local", f"{gpu.name} — {gpu.free_vram_gb:.1f} GB VRAM free, Ollama up."
+    # Only refuse when we actually inventoried tags and none were usable.
+    # Unit tests construct reports without a model list; those still route local.
+    if report.ollama_models and not report.ollama_model:
+        return "cloud", report.ollama_pick_reason or (
+            "Ollama is up but no instruct model fits — routing to Groq."
+        )
+    return "local", ready

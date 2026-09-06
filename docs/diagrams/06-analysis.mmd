@@ -1,0 +1,46 @@
+flowchart TB
+  subgraph CAPTURE
+    T1[User turn text stt_ms hesitation]
+    T2[Assistant turn text llm tts e2e correction]
+    T3[Session mode topic engine timestamps]
+    T4[User IP-derived id display name]
+  end
+
+  subgraph WHERE
+    DB[(data/echosync.db WAL)]
+    MD[exports md plain transcript D-05]
+    MCP[MCP tools read-only]
+    UI[LatencyStrip plus Transcript]
+  end
+
+  subgraph RULES
+    R1[STT timing is on USER row]
+    R2[LLM TTS E2E on ASSISTANT row]
+    R3[Markdown export has no flags]
+    R4[Observation UI leaks nothing flags stored]
+    R5[Casual repair via questions]
+    R6[Teaching one correction at a time]
+  end
+
+  subgraph METRICS
+    M1[e2e target under 800ms on GPU]
+    M2[M4 CPU baseline mean 1180ms TTS-bound]
+    M3[5070 GPU Kokoro about 450ms e2e]
+    M4[Engine badge local vs cloud]
+  end
+
+  T1 --> DB
+  T2 --> DB
+  T3 --> DB
+  T4 --> DB
+  DB --> MCP
+  DB --> MD
+  T2 --> UI
+  DB --> R1
+  DB --> R2
+  MD --> R3
+  R4 --> DB
+  M1 --> T2
+  M2 --> T2
+  M3 --> T2
+  M4 --> T3

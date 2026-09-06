@@ -196,11 +196,20 @@ async def voice_socket(websocket: WebSocket) -> None:
 
             elif kind == "engine":
                 # Manual override from the badge, applied between turns.
+                # A failed switch (no Groq key, local weights missing) must
+                # not kill the session — the current engine stays.
                 try:
                     preference = EnginePreference(command.get("engine", "auto"))
                 except ValueError:
                     continue
-                new_engine, _, new_reason = await engine_router.acquire(preference)
+                try:
+                    new_engine, _, new_reason = await engine_router.acquire(preference)
+                except Exception as exc:  # noqa: BLE001
+                    await _send(ErrorEvent(
+                        message=f"Could not switch engine: {exc}",
+                        fatal=False,
+                    ))
+                    continue
                 if new_engine.kind != orchestrator.engine.kind:
                     await orchestrator.switch_engine(new_engine, new_reason)
                     await db.update_session_engine(session_id, new_engine.kind)

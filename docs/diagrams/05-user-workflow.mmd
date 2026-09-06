@@ -1,0 +1,23 @@
+flowchart TD
+  U1[Open localhost:3000] --> U2[Health preflight shows engine]
+  U2 --> U3[Optional scenario text]
+  U3 --> U4[Pick Casual Teaching or Observation]
+  U4 --> U5[Click Start]
+  U5 --> U6{Mic permission?}
+  U6 -->|deny| ERR[Error cannot capture]
+  U6 -->|allow| U7[WS start - session bound to IP]
+  U7 --> U8[Ready orb idle badge live]
+  U8 --> U9[Speak a turn]
+  U9 --> U10[VAD end of utterance - user line]
+  U10 --> U11[Hear streamed TTS - agent orb]
+  U11 --> U12{Next action}
+  U12 -->|keep talking| U9
+  U12 -->|talk over agent| BI[Barge-in audio cuts floor returns]
+  BI --> U9
+  U12 -->|switch mode| U4
+  U12 -->|Teaching silent 4s| HINT[One hint]
+  HINT --> U9
+  U12 -->|Observation| SIL[No praise no correction logs only]
+  SIL --> U9
+  U12 -->|Stop| U13[Session ends]
+  U13 --> U14[Export markdown - analysis stays in SQLite]

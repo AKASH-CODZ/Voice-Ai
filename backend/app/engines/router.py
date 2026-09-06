@@ -20,6 +20,7 @@ import logging
 
 from app.core import hardware
 from app.core.config import settings
+from app.core.ollama import ensure_ollama
 from app.core.schemas import EnginePreference
 from app.engines.base import VoiceEngine
 from app.engines.cloud import build_cloud_engine
@@ -39,8 +40,8 @@ class EngineRouter:
 
     # ── probing ──────────────────────────────────────────────
 
-    def probe(self) -> hardware.HardwareReport:
-        return hardware.probe()
+    def probe(self, ensure: bool = False) -> hardware.HardwareReport:
+        return hardware.probe(ensure=ensure)
 
     # ── acquisition ──────────────────────────────────────────
 
@@ -58,23 +59,38 @@ class EngineRouter:
         else:
             target, reason = report.recommended_engine, report.reason
 
-        # A previous load failure is sticky for the process: retrying a broken
-        # CUDA stack on every connection just adds a multi-second stall to each.
-        if target == "local" and self._local_failed_reason and preference is not EnginePreference.LOCAL:
+        # CUDA/import/missing-weights failures are sticky: retrying a broken
+        # stack on every connection just adds a multi-second stall. Ollama
+        # being down at boot is not — it may have come up since (D-18).
+        if (
+            target == "local"
+            and self._local_failed_reason
+            and preference is not EnginePreference.LOCAL
+        ):
             target = "cloud"
             reason = self._local_failed_reason
+
+        if target == "local" and report.ollama_status in {"down", "starting"}:
+            await asyncio.to_thread(ensure_ollama)
+            report = self.probe()
+            if preference is EnginePreference.AUTO:
+                target, reason = report.recommended_engine, report.reason
 
         if target == "local":
             try:
                 engine = await self._get_local(report)
                 return engine, report, reason
             except Exception as exc:  # noqa: BLE001
-                self._local_failed_reason = (
+                fail = (
                     f"Local engine failed to start ({type(exc).__name__}: {exc}) "
                     "— falling back to Groq."
                 )
-                log.error(self._local_failed_reason, exc_info=True)
-                reason = self._local_failed_reason
+                log.error(fail, exc_info=True)
+                if _is_sticky_local_failure(exc):
+                    self._local_failed_reason = fail
+                else:
+                    self._local_failed_reason = None
+                reason = fail
 
         engine = await self._get_cloud()
         return engine, report, reason
@@ -83,7 +99,10 @@ class EngineRouter:
         async with self._lock:
             if self._local is None:
                 gpu = report.primary_gpu
-                engine = build_local_engine(gpu.name if gpu else None)
+                engine = build_local_engine(
+                    gpu.name if gpu else None,
+                    ollama_model=report.ollama_model,
+                )
                 await engine.load()
                 self._local = engine
             return self._local
@@ -121,14 +140,24 @@ class EngineRouter:
                 "— switching the pipeline to Groq to avoid throttled latency."
             )
 
-        # 1 GB floor: below this we are one allocation away from an OOM that
-        # would drop the call entirely.
-        if gpu.free_vram_gb < 1.0:
+        # Mid-session floor is degrade_free_vram_gb (1.0), not the 3.5 GB
+        # *load* floor: models are already resident, so free VRAM is ~3 GB
+        # lower than at first route. Crossing 1 GB means we are one
+        # allocation away from an OOM that would drop the call.
+        if gpu.free_vram_gb < settings.degrade_free_vram_gb:
             return True, (
                 f"Only {gpu.free_vram_gb:.1f} GB VRAM free — switching to Groq "
                 "before we run out."
             )
         return False, ""
+
+
+def _is_sticky_local_failure(exc: BaseException) -> bool:
+    """True for failures that will not fix themselves without a restart."""
+    if isinstance(exc, (ImportError, FileNotFoundError)):
+        return True
+    msg = str(exc).lower()
+    return "cuda" in msg or "cudnn" in msg or "kernel image" in msg
 
     async def shutdown(self) -> None:
         for engine in (self._local, self._cloud):

@@ -24,6 +24,11 @@ export interface HardwareReport {
   platform: string;
   apple_silicon: boolean;
   ollama_reachable: boolean;
+  ollama_status?: "up" | "starting" | "down" | "missing";
+  ollama_model?: string | null;
+  ollama_models?: string[];
+  ollama_pick_reason?: string;
+  whisper_device?: string;
   cloud_credentials: boolean;
   recommended_engine: string;
   reason: string;
