@@ -243,13 +243,15 @@ class EdgeTTS(TTSEngine):
 
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-i", "pipe:0",
+            # MP3 on a non-seekable pipe needs an explicit demuxer; without
+            # `-f mp3` ffmpeg often probes forever and stdout stays empty.
+            "-f", "mp3", "-i", "pipe:0",
             "-f", "s16le", "-acodec", "pcm_s16le",
             "-ar", str(self.sample_rate), "-ac", "1",
             "pipe:1",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
         )
         assert proc.stdin is not None and proc.stdout is not None
 
@@ -271,11 +273,13 @@ class EdgeTTS(TTSEngine):
 
         feeder = asyncio.create_task(_feed(), name="edge-tts-feed")
         chunk_bytes = int(self.sample_rate * 0.12) * 2
+        yielded = False
         try:
             while True:
                 pcm = await proc.stdout.read(chunk_bytes)
                 if not pcm:
                     break
+                yielded = True
                 yield pcm16_to_float32(pcm)
         finally:
             # Barge-in cancels this generator; make sure ffmpeg dies with it
@@ -286,7 +290,16 @@ class EdgeTTS(TTSEngine):
                     proc.kill()
                 except ProcessLookupError:
                     pass
-            await asyncio.gather(feeder, proc.wait(), return_exceptions=True)
+            _feed_result, _waited, err = await asyncio.gather(
+                feeder, proc.wait(), proc.stderr.read() if proc.stderr else asyncio.sleep(0, result=b""),
+                return_exceptions=True,
+            )
+            if not yielded:
+                err_txt = err.decode("utf-8", "replace") if isinstance(err, (bytes, bytearray)) else str(err)
+                log.error(
+                    "Edge TTS produced no PCM (ffmpeg rc=%s): %s",
+                    proc.returncode, err_txt[:500],
+                )
 
 
 def build_cloud_engine() -> VoiceEngine:

@@ -347,3 +347,17 @@ Why: Groq's published replacement for the 8B Instant slot. Voice replies
 must stay short; gpt-oss reasons by default.
 Rejected: staying on `llama-3.1-8b-instant` (404 on the demo key);
 `openai/gpt-oss-120b` as default (slower, more expensive, same 404-fix).
+
+## 2026-09-07 — D-22: Prime the TTS AudioContext in the click, before await
+Status: accepted
+Decision: `AudioPlayback.prime()` constructs the 24 kHz output
+`AudioContext` synchronously inside the Start-talking click, *before*
+`getUserMedia`. `enqueue` also calls `resume()` if the context later
+suspends.
+Why: Chrome treats localhost as autoplay-exempt, so a context created
+after `await getUserMedia()` still plays on the M4. The same code on
+`https://echosync-web.onrender.com` leaves that second context
+`suspended`: JSON transcripts arrive, PCM is scheduled into a silent
+graph. Edge TTS ffmpeg now sets `-f mp3` on the stdin pipe (MP3 is not
+probeable without it).
+Rejected: a visible "tap to unmute" overlay as the primary fix.

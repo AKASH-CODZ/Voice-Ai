@@ -30,12 +30,19 @@ export class AudioPlayback {
 
   constructor(private readonly sampleRate: number = 24000) {}
 
-  async start(): Promise<void> {
+  /**
+   * Create the output AudioContext inside a user-gesture call stack.
+   * Must run *before* any `await` (getUserMedia, etc.). localhost is exempt
+   * from autoplay rules; https://echosync-web.onrender.com is not, so a
+   * context created after the click's first await stays suspended forever
+   * — transcripts still stream, speakers stay silent.
+   */
+  prime(): void {
     if (this.ctx) return;
-    // Note: the output context runs at the TTS rate, independent of the 16 kHz
-    // capture context. Browsers happily run two contexts at different rates.
+    // Output runs at the TTS rate, independent of the 16 kHz capture context.
     this.ctx = new AudioContext({ sampleRate: this.sampleRate });
     this.gain = this.ctx.createGain();
+    this.gain.gain.value = 1;
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.75;
@@ -44,16 +51,23 @@ export class AudioPlayback {
     this.gain.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
     this.nextStartTime = this.ctx.currentTime + LEAD_TIME;
+    void this.ctx.resume();
+  }
 
-    if (this.ctx.state === "suspended") await this.ctx.resume();
+  async start(): Promise<void> {
+    this.prime();
+    if (this.ctx?.state === "suspended") await this.ctx.resume();
   }
 
   /** Enqueue one PCM16LE chunk. */
   enqueue(pcm: ArrayBuffer): void {
     if (!this.ctx || !this.gain) return;
+    if (this.ctx.state === "suspended") void this.ctx.resume();
 
     if (pcm.byteLength < 2) return;
-    const view = new Int16Array(pcm, 0, Math.floor(pcm.byteLength / 2));
+    // Copy: some browsers reuse the WebSocket ArrayBuffer on the next frame.
+    const copy = pcm.slice(0);
+    const view = new Int16Array(copy, 0, Math.floor(copy.byteLength / 2));
     if (view.length === 0) return;
 
     const ctxRate = this.ctx.sampleRate;

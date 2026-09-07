@@ -200,6 +200,11 @@ export function useVoiceSession() {
   }, []);
 
   const start = useCallback(async (options: StartOptions) => {
+    // Prime the output context in this click, before any await. HTTPS pages
+    // (the Render demo) will not resume a context created after getUserMedia.
+    const playback = new AudioPlayback(24000);
+    playback.prime();
+
     if (socketRef.current) await stop();
 
     patch({ status: "requesting-mic", error: null, transcript: [], latency: null, mode: options.mode });
@@ -219,6 +224,7 @@ export function useVoiceSession() {
       await capture.start();
       captureRef.current = capture;
     } catch (err) {
+      await playback.close();
       patch({
         status: "error",
         error:
@@ -229,7 +235,6 @@ export function useVoiceSession() {
       return;
     }
 
-    const playback = new AudioPlayback(24000);
     await playback.start();
     playbackRef.current = playback;
     startLevelLoop();
@@ -255,7 +260,12 @@ export function useVoiceSession() {
         try { handleEvent(JSON.parse(event.data) as ServerEvent); } catch { /* ignore */ }
         return;
       }
-      playbackRef.current?.enqueue(event.data as ArrayBuffer);
+      const raw = event.data;
+      if (raw instanceof Blob) {
+        void raw.arrayBuffer().then((buf) => playbackRef.current?.enqueue(buf));
+        return;
+      }
+      playbackRef.current?.enqueue(raw as ArrayBuffer);
     };
 
     socket.onerror = () => {
