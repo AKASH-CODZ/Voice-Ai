@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { backendDownMessage } from "@/lib/backend";
 import type { EnginePreference, HardwareReport } from "@/lib/types";
 
 /**
@@ -63,9 +64,7 @@ export function EngineBadge({
       {open && (
         <div className="mt-1.5 animate-fade-up space-y-3 rounded-lg border border-white/[0.06] bg-ink-800/50 p-3 text-[12px]">
           {healthError && !hardware && (
-            <p className="leading-relaxed text-red-300">
-              Could not reach the voice backend. Start it with <code>make backend</code>.
-            </p>
+            <p className="leading-relaxed text-red-300">{backendDownMessage()}</p>
           )}
           {reason && <p className="leading-relaxed text-haze-300">{reason}</p>}
 

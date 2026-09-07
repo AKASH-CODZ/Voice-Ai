@@ -320,3 +320,30 @@ one box — a users table is extra attack surface for no product gain.
 Rejected: LiveKit before a Space exists; adding accounts before the
 product is multi-tenant. Re-open D-01 only after a public demo shows
 loss/NAT pain; re-open D-04 only if this stops being a small-group tool.
+
+## 2026-09-07 — D-20: Render `fromService` host is not a browser origin
+Status: accepted
+Decision: `NEXT_PUBLIC_BACKEND_URL` must be the public URL
+(`https://echosync-api.onrender.com`). `fromService.property: host` is
+Render internal DNS (`echosync-api`); the browser cannot resolve it, so
+the health badge shows "backend is down" while `/api/health` on the API
+service is 200. The frontend origin helper expands a bare service name
+to `<name>.onrender.com`. Do not restore `fromService` for this var.
+Why: Blueprint env updates do not overwrite a dashboard value that was
+already set from `fromService`. The live `echosync-web` bundle inlined
+`"echosync-api"` and fetched `https://echosync-api/api/health`.
+Rejected: relying on Next `/api` rewrites to the sibling Render service
+(returned 500); telling public-demo visitors to `make backend`.
+
+## 2026-09-07 — D-21: Groq LLM is `openai/gpt-oss-20b`
+Status: accepted
+Decision: Default `GROQ_LLM_MODEL` is `openai/gpt-oss-20b`. Groq shut down
+`llama-3.1-8b-instant` for free/developer keys on 2026-08-16 (still listed
+as Enterprise / Contact Sales). Live Render turns 404'd with
+`model_not_found`. For gpt-oss, the cloud LLM sends `reasoning_effort=low`
+and `include_reasoning=false` so the spoken path does not wait on or speak
+the reasoning chain. `max_completion_tokens=220` replaces `max_tokens`.
+Why: Groq's published replacement for the 8B Instant slot. Voice replies
+must stay short; gpt-oss reasons by default.
+Rejected: staying on `llama-3.1-8b-instant` (404 on the demo key);
+`openai/gpt-oss-120b` as default (slower, more expensive, same 404-fix).

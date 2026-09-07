@@ -125,13 +125,21 @@ class GroqLLM(LLMEngine):
         if self._client is None:
             await self.load()
 
+        extra: dict[str, object] = {}
+        # gpt-oss reasons by default. Hide the chain and keep it short so TTS
+        # is not delayed or filled with <think> text (D-21).
+        if "gpt-oss" in settings.groq_llm_model:
+            extra["reasoning_effort"] = "low"
+            extra["include_reasoning"] = False
+
         stream = await self._client.chat.completions.create(
             model=settings.groq_llm_model,
             messages=messages,
             stream=True,
             temperature=0.7,
             top_p=0.9,
-            max_tokens=220,
+            max_completion_tokens=220,
+            extra_body=extra or None,
         )
         async for chunk in stream:
             if not chunk.choices:

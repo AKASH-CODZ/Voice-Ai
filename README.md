@@ -37,7 +37,7 @@ One clone, one computer. There is no pair of machines to wire together.
             ▼                             ▼
  ┌────────────────────────┐   ┌──────────────────────────┐
  │ Faster-Whisper (CUDA)  │   │ Groq whisper-large-v3    │
- │ Ollama Llama-3.2-3B    │   │ Groq llama-3.1-8b-instant│
+ │ Ollama Llama-3.2-3B    │   │ Groq openai/gpt-oss-20b  │
  │ Kokoro-82M             │   │ Kokoro-82M (CPU)         │
  └────────────────────────┘   └──────────────────────────┘
 ```

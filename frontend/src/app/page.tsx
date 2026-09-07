@@ -8,7 +8,7 @@ import { ModeSwitcher } from "@/components/ModeSwitcher";
 import { Transcript } from "@/components/Transcript";
 import { VoiceOrb } from "@/components/VoiceOrb";
 import { useVoiceSession } from "@/hooks/useVoiceSession";
-import { apiUrl } from "@/lib/backend";
+import { apiUrl, backendDownMessage } from "@/lib/backend";
 import type { EnginePreference, HealthResponse, Mode } from "@/lib/types";
 
 export default function Home() {
@@ -26,19 +26,39 @@ export default function Home() {
   // thing a reviewer looks at.
   useEffect(() => {
     let cancelled = false;
-    fetch(apiUrl("/api/health"))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = Date.now() + 40_000;
+    let attempt = 0;
+
+    const tick = async () => {
+      const timeoutMs = attempt === 0 ? 30_000 : 8_000;
+      attempt += 1;
+      try {
+        const r = await fetch(apiUrl("/api/health"), {
+          cache: "no-store",
+          signal: AbortSignal.timeout(timeoutMs),
+        });
         if (cancelled) return;
-        if (data) {
-          setPreflight(data);
+        if (r.ok) {
+          setPreflight(await r.json());
           setHealthError(false);
-        } else {
-          setHealthError(true);
+          return;
         }
-      })
-      .catch(() => { if (!cancelled) setHealthError(true); });
-    return () => { cancelled = true; };
+      } catch {
+        /* retry — Render free API sleeps independently of the web service */
+      }
+      if (cancelled) return;
+      setHealthError(true);
+      if (Date.now() < deadline) {
+        retryTimer = setTimeout(() => { void tick(); }, 4_000);
+      }
+    };
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
   }, []);
 
   const handleStart = useCallback(() => {
@@ -200,7 +220,7 @@ function StatusLine({
 }) {
   const idle = state.status === "idle" || state.status === "closed";
   const text =
-    healthError && idle ? "Backend is down — start it with make backend."
+    healthError && idle ? backendDownMessage()
     : state.status === "requesting-mic" ? "Waiting for microphone permission…"
     : state.status === "connecting" ? "Connecting to the voice engine…"
     : state.status === "error" ? "Something went wrong"

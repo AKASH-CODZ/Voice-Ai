@@ -1,8 +1,24 @@
 /** @type {import('next').NextConfig} */
+// Keep in sync with src/lib/backend.ts `normalizeBackendOrigin`.
 function backendOrigin() {
-  const raw = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
-  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
-  return `https://${raw}`;
+  let value = (process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000")
+    .trim()
+    .replace(/\/$/, "");
+  if (!value.includes("://")) {
+    const hostname = value.split(":")[0] ?? value;
+    if (
+      !hostname.includes(".")
+      && hostname !== "localhost"
+      && !hostname.startsWith("127.")
+    ) {
+      value = `${hostname}.onrender.com`;
+    }
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  const host = value.split("/")[0] ?? value;
+  const scheme =
+    host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+  return `${scheme}://${value}`;
 }
 const backend = backendOrigin();
 

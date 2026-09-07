@@ -4,26 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AudioCapture } from "@/lib/audioCapture";
 import { AudioPlayback } from "@/lib/audioPlayback";
+import { voiceWsUrl } from "@/lib/backend";
 import type {
   ConnectionStatus, EnginePreference, HardwareReport, LatencySample, Mode,
   ServerEvent, TranscriptTurn,
 } from "@/lib/types";
 
-function resolveWsUrl(): string {
-  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
-  const raw = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
-  const backend =
-    raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://${raw}`;
-  try {
-    const u = new URL(backend);
-    const scheme = u.protocol === "https:" ? "wss:" : "ws:";
-    return `${scheme}//${u.host}/ws/voice`;
-  } catch {
-    return "ws://localhost:8000/ws/voice";
-  }
-}
-
-const WS_URL = resolveWsUrl();
+const WS_URL = voiceWsUrl();
 
 export interface VoiceSessionState {
   status: ConnectionStatus;

@@ -20,6 +20,8 @@ services:
     envVars:
       - key: ENGINE_MODE
         value: cloud
+      - key: GROQ_LLM_MODEL
+        value: openai/gpt-oss-20b
       - key: CLOUD_TTS_PROVIDER
         value: edge
       - key: ECHOSYNC_ENV
@@ -37,5 +39,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.12.0"
+      # Public URL only. `fromService.property: host` is internal DNS
+      # (`echosync-api`) — browsers cannot resolve it, and the badge dies.
       - key: NEXT_PUBLIC_BACKEND_URL
         value: https://echosync-api.onrender.com

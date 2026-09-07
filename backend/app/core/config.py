@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     # ── Cloud pipeline ───────────────────────────────────────
     groq_api_key: str = ""
     groq_stt_model: str = "whisper-large-v3-turbo"
-    groq_llm_model: str = "llama-3.1-8b-instant"
+    # Groq shut down llama-3.1-8b-instant for free/developer keys on 2026-08-16
+    # (enterprise-only after that). Their listed replacement is gpt-oss-20b.
+    groq_llm_model: str = "openai/gpt-oss-20b"
     cloud_tts_provider: Literal["edge", "kokoro-onnx"] = "kokoro-onnx"
     edge_tts_voice: str = "en-US-AriaNeural"
 
