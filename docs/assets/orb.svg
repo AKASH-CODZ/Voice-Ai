@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="EchoSync listening orb">
+  <defs>
+    <radialGradient id="core" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="35%" stop-color="#4cc9f0" stop-opacity="0.85"/>
+      <stop offset="75%" stop-color="#8b5cf6" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#07080c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="78" fill="none" stroke="#4cc9f0" stroke-width="1.2" stroke-opacity="0.28">
+    <animate attributeName="r" values="68;86;68" dur="2.8s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-opacity" values="0.4;0.06;0.4" dur="2.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="100" cy="100" r="60" fill="none" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.22">
+    <animate attributeName="r" values="54;70;54" dur="2.8s" begin="0.4s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-opacity" values="0.32;0.05;0.32" dur="2.8s" begin="0.4s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="100" cy="100" r="44" fill="url(#core)">
+    <animate attributeName="r" values="40;48;40" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+</svg>

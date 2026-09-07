@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 80" width="1200" height="80" preserveAspectRatio="none" role="img" aria-label="sound wave">
+  <path fill="none" stroke="#4cc9f0" stroke-width="2" stroke-linecap="round" opacity="0.85">
+    <animate
+      attributeName="d"
+      dur="2.4s"
+      repeatCount="indefinite"
+      values="
+        M0 40 Q 75 18 150 40 T 300 40 T 450 40 T 600 40 T 750 40 T 900 40 T 1050 40 T 1200 40;
+        M0 40 Q 75 62 150 40 T 300 40 T 450 40 T 600 40 T 750 40 T 900 40 T 1050 40 T 1200 40;
+        M0 40 Q 75 18 150 40 T 300 40 T 450 40 T 600 40 T 750 40 T 900 40 T 1050 40 T 1200 40"/>
+  </path>
+  <path fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" opacity="0.55">
+    <animate
+      attributeName="d"
+      dur="3.2s"
+      repeatCount="indefinite"
+      values="
+        M0 40 Q 100 58 200 40 T 400 40 T 600 40 T 800 40 T 1000 40 T 1200 40;
+        M0 40 Q 100 22 200 40 T 400 40 T 600 40 T 800 40 T 1000 40 T 1200 40;
+        M0 40 Q 100 58 200 40 T 400 40 T 600 40 T 800 40 T 1000 40 T 1200 40"/>
+  </path>
+</svg>
