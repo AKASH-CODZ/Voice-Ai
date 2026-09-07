@@ -361,3 +361,17 @@ after `await getUserMedia()` still plays on the M4. The same code on
 graph. Edge TTS ffmpeg now sets `-f mp3` on the stdin pipe (MP3 is not
 probeable without it).
 Rejected: a visible "tap to unmute" overlay as the primary fix.
+
+## 2026-09-07 — D-23: Edge TTS 7.0.0 403s; pin 7.2.8
+Status: accepted
+Decision: Pin `edge-tts==7.2.8`. 7.0.0 handshakes `wss://speech.platform.bing.com`
+with HTTP 403, so Render (`CLOUD_TTS_PROVIDER=edge`) sends no PCM while
+JSON transcripts still stream. 7.2.8 produced MP3 locally (16 kB for a
+short sentence). The frontend also speaks the assistant text via
+`speechSynthesis` if a turn ends with zero PCM, so a Microsoft outage
+is not silent.
+Why: Live demo inaudible after Groq LLM was fixed. Local Groq key
+confirmed gpt-oss-20b returns spoken replies; Groq Orpheus TTS requires
+org terms acceptance, so it is not the Render default.
+Rejected: Kokoro on Render free (512 MB, D-07/D-22); Groq Orpheus as
+default without terms (org admin must accept at the Groq playground).

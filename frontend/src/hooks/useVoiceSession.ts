@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AudioCapture } from "@/lib/audioCapture";
 import { AudioPlayback } from "@/lib/audioPlayback";
 import { voiceWsUrl } from "@/lib/backend";
+import { SpeechFallback } from "@/lib/speechFallback";
 import type {
   ConnectionStatus, EnginePreference, HardwareReport, LatencySample, Mode,
   ServerEvent, TranscriptTurn,
@@ -57,6 +58,7 @@ export function useVoiceSession() {
   const socketRef = useRef<WebSocket | null>(null);
   const captureRef = useRef<AudioCapture | null>(null);
   const playbackRef = useRef<AudioPlayback | null>(null);
+  const speechRef = useRef<SpeechFallback | null>(null);
   const rafRef = useRef<number | null>(null);
   // The assistant's in-flight reply, accumulated from agent_delta events.
   const streamingRef = useRef<string>("");
@@ -91,9 +93,13 @@ export function useVoiceSession() {
         break;
 
       case "speaking":
-        if (event.active) streamingRef.current = "";
+        if (event.active) {
+          streamingRef.current = "";
+          speechRef.current?.beginTurn();
+        }
         patch({ agentSpeaking: event.active });
         if (!event.active) {
+          speechRef.current?.endTurn();
           // Promote the streamed draft to a settled turn if the authoritative
           // `transcript` event has not already landed.
           streamingRef.current = "";
@@ -105,6 +111,7 @@ export function useVoiceSession() {
         break;
 
       case "agent_delta": {
+        speechRef.current?.pushDelta(event.text);
         streamingRef.current += event.text;
         const draft = streamingRef.current;
         setState((prev) => {
@@ -188,6 +195,8 @@ export function useVoiceSession() {
     captureRef.current = null;
     await playbackRef.current?.close();
     playbackRef.current = null;
+    speechRef.current?.cancel();
+    speechRef.current = null;
 
     setState((prev) => ({
       ...prev,
@@ -237,6 +246,7 @@ export function useVoiceSession() {
 
     await playback.start();
     playbackRef.current = playback;
+    speechRef.current = new SpeechFallback();
     startLevelLoop();
 
     patch({ status: "connecting" });
@@ -262,9 +272,13 @@ export function useVoiceSession() {
       }
       const raw = event.data;
       if (raw instanceof Blob) {
-        void raw.arrayBuffer().then((buf) => playbackRef.current?.enqueue(buf));
+        void raw.arrayBuffer().then((buf) => {
+          speechRef.current?.heardPcm();
+          playbackRef.current?.enqueue(buf);
+        });
         return;
       }
+      speechRef.current?.heardPcm();
       playbackRef.current?.enqueue(raw as ArrayBuffer);
     };
 
@@ -292,6 +306,7 @@ export function useVoiceSession() {
     // sending — the already-buffered audio is what the user is complaining
     // about by talking over it.
     playbackRef.current?.stop();
+    speechRef.current?.cancel();
     send({ type: "interrupt" });
     patch({ agentSpeaking: false });
   }, [patch, send]);
